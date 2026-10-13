@@ -92,6 +92,16 @@ History returns.
 Plugin settings use the distinct `settings/hosts/[serverId]/plugins/[pluginId]/[screenId]` leaf;
 Back returns to that host's Plugins page.
 
+The Back/Forward header buttons and the History back/forward keyboard actions
+use session-local application history. Observe routes and focused tabs in
+`navigation/route-history-shared.ts`; do not change route call sites to push
+browser entries. Replay workspace visits through the existing workspace helper
+with an explicit tab target. Closed tabs are skipped; history does not reopen
+resources. Reloading starts a new history.
+
+Native history reads the focused route's params instead of a browser URL. The
+browser dispatcher and its DOM event listeners must stay disabled on native.
+
 Settings detail routes are separate siblings on purpose. Keep
 `settings/[section]`, the host routes, the projects index, and project detail as
 distinct route names. `router.dismissTo()` ultimately matches stack entries by

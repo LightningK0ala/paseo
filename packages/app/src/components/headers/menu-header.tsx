@@ -6,6 +6,10 @@ import { PanelLeft } from "lucide-react-native";
 import { ScreenHeader } from "./screen-header";
 import { ScreenTitle } from "./screen-title";
 import { HeaderToggleButton, headerIconSlotStyle } from "./header-toggle-button";
+import {
+  HISTORY_NAVIGATION_BUTTON_COUNT,
+  HistoryNavigationButtons,
+} from "./history-navigation-buttons";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { getShortcutOs } from "@/utils/shortcut-platform";
@@ -28,6 +32,10 @@ interface SidebarMenuToggleProps {
 const MOBILE_MENU_LINE_WIDTH = 16;
 const MOBILE_MENU_LINE_SHORT_WIDTH = 8;
 const MOBILE_MENU_LINE_HEIGHT = 1.5;
+const HISTORY_PLACEHOLDER_KEYS = Array.from(
+  { length: HISTORY_NAVIGATION_BUTTON_COUNT },
+  (_, index) => `history-placeholder-${index}`,
+);
 
 function MobileMenuIcon({ color }: { color: string }) {
   const lineStyle = useMemo(() => [styles.mobileMenuLine, { backgroundColor: color }], [color]);
@@ -119,25 +127,39 @@ export function SidebarMenuToggle({ style, ...props }: SidebarMenuToggleProps = 
   }
 
   if (!isMobile && hasTopLeftWindowControls) {
+    // The window chrome draws the toggle and the history buttons over this space.
     return (
-      <View pointerEvents="none" style={placeholderStyle}>
-        <View style={styles.desktopMenuIconSpace} />
-      </View>
+      <>
+        <View pointerEvents="none" style={placeholderStyle}>
+          <View style={styles.desktopMenuIconSpace} />
+        </View>
+        {HISTORY_PLACEHOLDER_KEYS.map((key) => (
+          <View key={key} pointerEvents="none" style={headerIconSlotStyle.slot} />
+        ))}
+      </>
     );
   }
 
-  return <SidebarMenuToggleButton {...props} isMobile={isMobile} resolvedStyle={resolvedStyle} />;
+  return (
+    <>
+      <SidebarMenuToggleButton {...props} isMobile={isMobile} resolvedStyle={resolvedStyle} />
+      {isMobile ? null : <HistoryNavigationButtons />}
+    </>
+  );
 }
 
 export function WindowSidebarMenuToggle({ style, ...props }: SidebarMenuToggleProps = {}) {
   const resolvedStyle = useMemo(() => [styles.leadingToggle, style], [style]);
   return (
-    <SidebarMenuToggleButton
-      {...props}
-      isMobile={false}
-      extraMutedIdleIcon
-      resolvedStyle={resolvedStyle}
-    />
+    <>
+      <SidebarMenuToggleButton
+        {...props}
+        isMobile={false}
+        extraMutedIdleIcon
+        resolvedStyle={resolvedStyle}
+      />
+      <HistoryNavigationButtons extraMutedIdleIcon />
+    </>
   );
 }
 

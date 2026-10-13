@@ -1010,6 +1010,7 @@ const layoutStyles = StyleSheet.create((theme) => ({
     height: HEADER_INNER_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
+    gap: theme.spacing[2],
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: "transparent",
   },

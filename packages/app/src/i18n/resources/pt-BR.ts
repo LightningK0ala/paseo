@@ -2383,6 +2383,8 @@ export const ptBR: TranslationResources = {
         closePane: "Fechar painel",
         newTerminal: "Novo terminal",
         searchFiles: "Pesquisar arquivos",
+        historyBack: "Voltar no histórico",
+        historyForward: "Avançar no histórico",
         toggleCommandCenter: "Alternar central de comandos",
         showKeyboardShortcuts: "Mostrar atalhos de teclado",
         toggleLeftSidebar: "Alternar barra lateral esquerda",

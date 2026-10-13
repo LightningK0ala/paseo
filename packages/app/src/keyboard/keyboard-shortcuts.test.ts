@@ -912,6 +912,86 @@ describe("keyboard-shortcut help sections", () => {
     ).not.toBeNull();
   });
 
+  it("lists route history actions unassigned outside the Mac desktop app", () => {
+    const platform = { isMac: true, isDesktop: false };
+    const sections = buildKeyboardShortcutHelpSections(platform);
+
+    expect(findRow(sections, "history-back")).toMatchObject({
+      label: "History back",
+      labelKey: "settings.shortcuts.help.historyBack",
+      chord: null,
+    });
+    expect(findRow(sections, "history-forward")).toMatchObject({
+      label: "History forward",
+      labelKey: "settings.shortcuts.help.historyForward",
+      chord: null,
+    });
+    expect(getBindingIdForAction("history-back", platform)).toBe("navigation-history-back");
+    expect(getBindingIdForAction("history-forward", platform)).toBe("navigation-history-forward");
+  });
+
+  it.each([
+    ["ArrowLeft", "history-back", "navigation.history.back"],
+    ["ArrowRight", "history-forward", "navigation.history.forward"],
+  ] as const)("binds Ctrl+Cmd+%s to %s in the Mac desktop app", (key, helpId, action) => {
+    const platform = { isMac: true, isDesktop: true };
+
+    expect(findRow(buildKeyboardShortcutHelpSections(platform), helpId)?.chord).toEqual([
+      ["ctrl", "mod", key === "ArrowLeft" ? "Left" : "Right"],
+    ]);
+    expect(getBindingIdForAction(helpId, platform)).toBe(`navigation-${helpId}-mac-desktop`);
+    expect(
+      resolveShortcut({
+        event: { key, code: key, ctrlKey: true, metaKey: true },
+        context: { ...platform, focusScope: "terminal" },
+      }).match?.action,
+    ).toBe(action);
+    expect(
+      resolveShortcut({
+        event: { key, code: key, ctrlKey: true, metaKey: true },
+        context: { isMac: true, isDesktop: false },
+      }).match,
+    ).toBeNull();
+  });
+
+  it("resolves user bindings for route history actions", () => {
+    const bindings = buildEffectiveBindings({
+      "navigation-history-back": "Ctrl+Alt+ArrowLeft",
+      "navigation-history-forward": "Ctrl+Alt+ArrowRight",
+    });
+
+    expect(
+      resolveShortcut({
+        event: { key: "ArrowLeft", code: "ArrowLeft", ctrlKey: true, altKey: true },
+        bindings,
+      }).match?.action,
+    ).toBe("navigation.history.back");
+    expect(
+      resolveShortcut({
+        event: { key: "ArrowRight", code: "ArrowRight", ctrlKey: true, altKey: true },
+        bindings,
+      }).match?.action,
+    ).toBe("navigation.history.forward");
+  });
+
+  it.each([
+    ["ArrowLeft", "navigation.history.back"],
+    ["ArrowRight", "navigation.history.forward"],
+  ] as const)("resolves %s route history bindings while the terminal is focused", (key, action) => {
+    const bindings = buildEffectiveBindings({
+      "navigation-history-back": "Ctrl+Alt+ArrowLeft",
+      "navigation-history-forward": "Ctrl+Alt+ArrowRight",
+    });
+
+    expect(
+      resolveShortcut({
+        event: { key, code: key, ctrlKey: true, altKey: true },
+        context: { focusScope: "terminal" },
+        bindings,
+      }).match?.action,
+    ).toBe(action);
+  });
+
   it("does not expose Enter send behavior as rebindable shortcut rows", () => {
     const sections = buildKeyboardShortcutHelpSections({ isMac: true, isDesktop: true });
 

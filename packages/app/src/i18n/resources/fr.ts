@@ -2400,6 +2400,8 @@ export const fr: TranslationResources = {
         closePane: "Fermer le panneau",
         newTerminal: "Nouveau terminal",
         searchFiles: "Rechercher des fichiers",
+        historyBack: "Reculer dans l’historique",
+        historyForward: "Avancer dans l’historique",
         toggleCommandCenter: "Afficher/masquer la palette de commandes",
         showKeyboardShortcuts: "Afficher les raccourcis clavier",
         toggleLeftSidebar: "Afficher/masquer la barre latérale gauche",
