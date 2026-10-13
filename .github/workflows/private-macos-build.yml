@@ -1,0 +1,97 @@
+name: Private macOS Build
+
+# Fork-only: builds an ad-hoc signed macOS app from this branch and uploads it
+# as a workflow artifact. It never publishes a release and needs no secrets.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - back-forward-navigation
+
+concurrency:
+  group: private-macos-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    if: ${{ github.repository != 'getpaseo/paseo' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            electron_arch: arm64
+            node_heap_mb: 4096
+          - runner: macos-15-intel
+            electron_arch: x64
+            node_heap_mb: 8192
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install JS dependencies
+        run: node scripts/npm-retry.mjs ci
+
+      - name: Build desktop app
+        shell: bash
+        env:
+          EP_GH_IGNORE_TIME: true
+          # No Apple certificate here: sign ad hoc, skip notarization.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          PASEO_DESKTOP_SMOKE: "1"
+          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+          NODE_OPTIONS: --max-old-space-size=${{ matrix.node_heap_mb }}
+        run: |
+          set -euo pipefail
+          build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
+          build_args+=("-c.mac.identity=-")
+          build_args+=("-c.mac.notarize=false")
+          # Hardened runtime enforces library validation, which rejects ad-hoc
+          # signed native modules.
+          build_args+=("-c.mac.hardenedRuntime=false")
+          # Point the updater at this fork so the build never replaces itself
+          # with an upstream release.
+          build_args+=("-c.publish.owner=${{ github.repository_owner }}")
+          build_args+=("-c.publish.repo=${{ github.event.repository.name }}")
+          npm run build:desktop "${build_args[@]}"
+
+      - name: Inspect signature and updater feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(find packages/desktop/release -maxdepth 2 -name 'Paseo.app' | head -n 1)"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Identifier|Signature|TeamIdentifier|flags'
+          cat "$app/Contents/Resources/app-update.yml"
+          lipo -archs "$app/Contents/MacOS/Paseo"
+          ls -lh packages/desktop/release
+
+      - name: Upload smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-macos-${{ matrix.electron_arch }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: paseo-macos-${{ matrix.electron_arch }}
+          path: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.zip
+          if-no-files-found: error
+          retention-days: 30
