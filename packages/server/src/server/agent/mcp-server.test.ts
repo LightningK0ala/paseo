@@ -6319,3 +6319,119 @@ describe("agent snapshot MCP serialization", () => {
     expect(content).not.toContain("first answer");
   });
 });
+
+describe("archived agents that are still loaded", () => {
+  const logger = createTestLogger();
+  const archivedAt = "2026-10-12T07:01:29.134Z";
+
+  // Mirrors a daily-brief subagent: archived as its turn finished, still loaded
+  // (idle) in the daemon, and still carrying its finished, unread attention flag.
+  function seedArchivedAndActiveAgents() {
+    const deps = createTestDeps();
+    const finished = {
+      requiresAttention: true as const,
+      attentionReason: "finished" as const,
+      attentionTimestamp: new Date("2026-10-12T07:01:29.143Z"),
+    };
+    deps.spies.agentManager.listAgents.mockReturnValue([
+      createManagedAgent({ id: "archived-loaded", lifecycle: "idle", attention: finished }),
+      createManagedAgent({ id: "active-loaded", lifecycle: "idle", attention: finished }),
+    ]);
+    deps.spies.agentManager.getAgent.mockImplementation((id: string) =>
+      id === "archived-loaded"
+        ? createManagedAgent({ id: "archived-loaded", lifecycle: "idle", attention: finished })
+        : null,
+    );
+    const records: Record<string, StoredAgentRecord> = {
+      "archived-loaded": createStoredRecord({
+        id: "archived-loaded",
+        title: "Daily brief: BPL mail",
+        lastStatus: "idle",
+        archivedAt,
+      }),
+      "active-loaded": createStoredRecord({
+        id: "active-loaded",
+        title: "Active agent",
+        lastStatus: "idle",
+        archivedAt: null,
+      }),
+    };
+    deps.spies.agentStorage.get.mockImplementation(async (id: string) => records[id] ?? null);
+    deps.spies.agentStorage.list.mockResolvedValue(Object.values(records));
+    return deps;
+  }
+
+  async function listAgents(args: Record<string, unknown>) {
+    const { agentManager, agentStorage } = seedArchivedAndActiveAgents();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      logger,
+    });
+    return agentsOf(await registeredTool(server, "list_agents").handler(args));
+  }
+
+  it("leaves a loaded archived agent out of list_agents by default", async () => {
+    const agents = await listAgents({ statuses: ["idle"] });
+
+    expect(agents.map((agent) => agent.id)).toEqual(["active-loaded"]);
+    expect(agents[0]).toMatchObject({
+      title: "Active agent",
+      archivedAt: null,
+      requiresAttention: true,
+      attentionReason: "finished",
+    });
+  });
+
+  it("lists a loaded archived agent with its stored archivedAt when includeArchived is set", async () => {
+    const agents = await listAgents({ statuses: ["idle"], includeArchived: true, sinceHours: 720 });
+    const byId = Object.fromEntries(agents.map((agent) => [agent.id, agent]));
+
+    expect(Object.keys(byId).sort()).toEqual(["active-loaded", "archived-loaded"]);
+    expect(byId["archived-loaded"]).toMatchObject({ title: "Daily brief: BPL mail", archivedAt });
+    expect(byId["active-loaded"]).toMatchObject({ archivedAt: null });
+  });
+
+  it("reports the stored archivedAt from get_agent_status for a loaded agent", async () => {
+    const { agentManager, agentStorage } = seedArchivedAndActiveAgents();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      logger,
+    });
+    const response = await registeredTool(server, "get_agent_status").handler({
+      agentId: "archived-loaded",
+    });
+
+    expect(response.structuredContent).toEqual({
+      status: "idle",
+      snapshot: expect.objectContaining({
+        id: "archived-loaded",
+        title: "Daily brief: BPL mail",
+        archivedAt,
+        requiresAttention: true,
+        attentionReason: "finished",
+      }),
+    });
+  });
+
+  it("reports archivedAt null for a loaded agent whose stored record cannot be read", async () => {
+    const { agentManager, agentStorage, spies } = seedArchivedAndActiveAgents();
+    spies.agentStorage.get.mockRejectedValue(new Error("disk unavailable"));
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      logger,
+    });
+    const response = await registeredTool(server, "get_agent_status").handler({
+      agentId: "archived-loaded",
+    });
+
+    expect(response.structuredContent).toMatchObject({
+      snapshot: { id: "archived-loaded", title: null, archivedAt: null },
+    });
+  });
+});

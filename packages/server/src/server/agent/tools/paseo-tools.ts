@@ -2086,6 +2086,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         .map((record) => buildStoredAgentPayload(record, registeredProviderIds));
       const agents = [...liveAgents, ...storedAgents]
         .map(toAgentListItemPayload)
+        // Stored records are pre-filtered above; this also excludes archived agents
+        // that are still loaded in memory.
+        .filter((agent) => includeArchived || !agent.archivedAt)
         .filter((agent) => !requestedCwd || isSameOrDescendantPath(requestedCwd, agent.cwd))
         .filter((agent) => !statusFilter || statusFilter.has(agent.status))
         .filter((agent) => !agent.archivedAt || resolveAgentListActivityTime(agent) >= sinceMs)

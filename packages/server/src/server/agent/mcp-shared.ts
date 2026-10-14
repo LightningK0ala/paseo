@@ -5,7 +5,7 @@ import type { AgentPermissionRequest } from "./agent-sdk-types.js";
 import type { AgentManager, ManagedAgent, WaitForAgentResult } from "./agent-manager.js";
 import { curateAgentActivity } from "./activity-curator.js";
 import { selectItemsByProjectedLimit } from "./timeline-projection.js";
-import type { AgentStorage } from "./agent-storage.js";
+import type { AgentStorage, StoredAgentRecord } from "./agent-storage.js";
 import { serializeAgentSnapshot } from "../messages.js";
 import { StoredScheduleSchema } from "@getpaseo/protocol/schedule/types";
 import type { AgentProvider } from "./agent-sdk-types.js";
@@ -202,27 +202,32 @@ export function sanitizePermissionRequest(
   return sanitized;
 }
 
-export async function resolveAgentTitle(
+async function loadStoredAgentRecord(
   agentStorage: AgentStorage,
   agentId: string,
   logger: Logger,
-): Promise<string | null> {
+): Promise<StoredAgentRecord | null> {
   try {
-    const record = await agentStorage.get(agentId);
-    return record?.title ?? null;
+    return await agentStorage.get(agentId);
   } catch (error) {
-    logger.error({ err: error, agentId }, "Failed to load agent title");
+    logger.error({ err: error, agentId }, "Failed to load stored agent metadata");
     return null;
   }
 }
 
+// A loaded agent's in-memory snapshot carries neither its title nor its archive
+// state; both live on the stored record. Archived agents can still be loaded (a
+// history resume loads one without unarchiving it), so archivedAt must come from
+// the record, as the WebSocket API does in Session.enrichAgentPayload.
 export async function serializeSnapshotWithMetadata(
   agentStorage: AgentStorage,
   snapshot: ManagedAgent,
   logger: Logger,
 ) {
-  const title = await resolveAgentTitle(agentStorage, snapshot.id, logger);
-  return serializeAgentSnapshot(snapshot, { title });
+  const record = await loadStoredAgentRecord(agentStorage, snapshot.id, logger);
+  const payload = serializeAgentSnapshot(snapshot, { title: record?.title ?? null });
+  payload.archivedAt = record?.archivedAt ?? null;
+  return payload;
 }
 
 export function parseDurationString(input: string): number {
