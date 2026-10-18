@@ -364,9 +364,11 @@ function scoreAgent(tokens: string[], phrase: string, agent: VoiceAgentView): nu
   if (matched === 0) {
     return 0;
   }
-  // A query that reads as a run of the title beats one whose words are scattered
-  // across title and project.
-  const phraseBonus = phrase.length > 0 && titleWords.join(" ").includes(phrase) ? 0.5 : 0;
+  // A query that reads as a run of whole title words beats one whose words are
+  // scattered across title and project. Whole words only: a bare substring would
+  // let "b" in "the b agent" break a tie toward any title containing a "b".
+  const phraseBonus =
+    phrase.length > 0 && ` ${titleWords.join(" ")} `.includes(` ${phrase} `) ? 0.5 : 0;
   return matched / tokens.length + phraseBonus;
 }
 

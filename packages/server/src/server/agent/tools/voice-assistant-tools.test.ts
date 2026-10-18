@@ -71,6 +71,14 @@ describe("matchAgent", () => {
     expect(matchAgent("billing webhook", pool)).toEqual({ kind: "unique", agent: pool[1] });
   });
 
+  it("does not break a tie on a fragment that only appears inside a title word", () => {
+    const pool = [
+      agent({ id: "c1", title: "Billing fix", project: "payments" }),
+      agent({ id: "c2", title: "Refactor", project: "billing-service" }),
+    ];
+    expect(matchAgent("the b agent", pool).kind).toBe("ambiguous");
+  });
+
   it("accepts an id prefix", () => {
     expect(matchAgent("4f0c2a9e", agents)).toEqual({ kind: "unique", agent: agents[4] });
   });
