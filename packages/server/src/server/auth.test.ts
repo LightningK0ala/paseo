@@ -39,6 +39,29 @@ describe("daemon bearer validator", () => {
     );
   });
 
+  test("keeps rejecting a wrong token after the right one has been accepted", async () => {
+    expect(
+      await isBearerTokenValidAsync({ password: CORRECT_PASSWORD_HASH, token: "correct-password" }),
+    ).toBe(true);
+    expect(
+      await isBearerTokenValidAsync({ password: CORRECT_PASSWORD_HASH, token: "correct-passwore" }),
+    ).toBe(false);
+  });
+
+  test("rejects a previously accepted token once the password changes", async () => {
+    expect(
+      await isBearerTokenValidAsync({ password: CORRECT_PASSWORD_HASH, token: "correct-password" }),
+    ).toBe(true);
+    const rotatedHash = hashDaemonPassword("rotated-password");
+
+    expect(
+      await isBearerTokenValidAsync({ password: rotatedHash, token: "correct-password" }),
+    ).toBe(false);
+    expect(
+      await isBearerTokenValidAsync({ password: rotatedHash, token: "rotated-password" }),
+    ).toBe(true);
+  });
+
   test("hashes a password into a bcrypt value", async () => {
     const hash = hashDaemonPassword("correct-password");
 

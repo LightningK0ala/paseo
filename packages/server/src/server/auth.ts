@@ -1,5 +1,5 @@
 import { compare, hashSync } from "bcryptjs";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "express";
 import { matchesLocalCredential } from "./local-credential.js";
 
@@ -21,6 +21,17 @@ interface BearerValidationInput {
   token: string | null;
 }
 
+// bcryptjs at cost 12 takes ~270 ms per compare, and HTTP callers such as the
+// remote MCP endpoint send the password with every request. Remember digests of
+// tokens that already passed, per password hash, so a repeat caller skips bcrypt.
+// Only successes are cached, so a wrong token always pays the full compare.
+const MAX_VERIFIED_BEARER_DIGESTS = 32;
+const verifiedBearerDigests = new Map<string, Set<string>>();
+
+function bearerDigest(passwordHash: string, token: string): string {
+  return createHash("sha256").update(passwordHash).update("\0").update(token).digest("hex");
+}
+
 export async function isBearerTokenValidAsync(input: BearerValidationInput): Promise<boolean> {
   if (!input.password) {
     return true;
@@ -29,7 +40,24 @@ export async function isBearerTokenValidAsync(input: BearerValidationInput): Pro
     return false;
   }
 
-  return compare(input.token, input.password);
+  const digest = bearerDigest(input.password, input.token);
+  if (verifiedBearerDigests.get(input.password)?.has(digest)) {
+    return true;
+  }
+  const valid = await compare(input.token, input.password);
+  if (valid) {
+    // A changed password has a new hash; drop what was verified against the old one.
+    if (!verifiedBearerDigests.has(input.password)) {
+      verifiedBearerDigests.clear();
+      verifiedBearerDigests.set(input.password, new Set());
+    }
+    const digests = verifiedBearerDigests.get(input.password)!;
+    if (digests.size >= MAX_VERIFIED_BEARER_DIGESTS) {
+      digests.clear();
+    }
+    digests.add(digest);
+  }
+  return valid;
 }
 
 export function hashDaemonPassword(password: string): string {
