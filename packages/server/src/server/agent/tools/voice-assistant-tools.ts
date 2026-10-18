@@ -310,7 +310,9 @@ export interface AgentMatchCandidate {
 
 export type AgentMatchResult =
   | { kind: "unique"; agent: VoiceAgentView }
-  | { kind: "ambiguous"; candidates: VoiceAgentView[]; total: number }
+  // exact: the candidates name every query word in full; otherwise they only
+  // contain the words inside longer ones.
+  | { kind: "ambiguous"; exact: boolean; candidates: VoiceAgentView[]; total: number }
   | { kind: "none"; suggestions: VoiceAgentView[] };
 
 // Words a speaker adds around the part that identifies the agent.
@@ -350,26 +352,46 @@ function queryTokens(query: string): string[] {
   return tokens.length > 0 ? tokens : words(query);
 }
 
-function tokenMatches(token: string, haystack: string[]): boolean {
-  const stem = token.length > 3 && token.endsWith("s") ? token.slice(0, -1) : token;
+function withoutPluralS(word: string): string {
+  return word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word;
+}
+
+// Whole words only (a plural "s" aside). This is the only kind of match that may
+// resolve a reference to one agent: "port" must not pick "Support ticket triage".
+function tokenMatchesWholeWord(token: string, haystack: string[]): boolean {
+  const stem = withoutPluralS(token);
+  return haystack.some((word) => withoutPluralS(word) === stem);
+}
+
+// Looser match, used only to suggest candidates: a word start, or a fragment of
+// four or more letters anywhere in a word.
+function tokenMatchesLoosely(token: string, haystack: string[]): boolean {
+  const stem = withoutPluralS(token);
   return haystack.some(
     (word) => word.startsWith(stem) || (stem.length >= 4 && word.includes(stem)),
   );
 }
 
-function scoreAgent(tokens: string[], phrase: string, agent: VoiceAgentView): number {
+interface ScoredAgent {
+  agent: VoiceAgentView;
+  /** Every query word is a whole word of the title or project. */
+  exact: boolean;
+  score: number;
+}
+
+function scoreAgent(tokens: string[], phrase: string, agent: VoiceAgentView): ScoredAgent {
   const titleWords = words(agent.title ?? "");
+  // words() splits on every non-alphanumeric, so "billing-service" and
+  // "infra/deploy.v2" contribute their parts.
   const haystack = [...titleWords, ...words(agent.project)];
-  const matched = tokens.filter((token) => tokenMatches(token, haystack)).length;
-  if (matched === 0) {
-    return 0;
-  }
+  const exact = tokens.every((token) => tokenMatchesWholeWord(token, haystack));
+  const matched = tokens.filter((token) => tokenMatchesLoosely(token, haystack)).length;
   // A query that reads as a run of whole title words beats one whose words are
   // scattered across title and project. Whole words only: a bare substring would
   // let "b" in "the b agent" break a tie toward any title containing a "b".
   const phraseBonus =
     phrase.length > 0 && ` ${titleWords.join(" ")} `.includes(` ${phrase} `) ? 0.5 : 0;
-  return matched / tokens.length + phraseBonus;
+  return { agent, exact, score: matched === 0 ? 0 : matched / tokens.length + phraseBonus };
 }
 
 function lastActiveTime(agent: VoiceAgentView): number {
@@ -377,10 +399,15 @@ function lastActiveTime(agent: VoiceAgentView): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function byScoreThenRecency(a: ScoredAgent, b: ScoredAgent): number {
+  return b.score - a.score || lastActiveTime(b.agent) - lastActiveTime(a.agent);
+}
+
 /**
  * Resolves a spoken reference ("the billing agent", "usage dashboard") or an id
- * to one agent. Only a sole best match that covers every query word counts as
- * unique; anything else returns candidates so the caller can ask.
+ * to one agent. Only a sole best match whose every query word is a whole word of
+ * its title or project counts as unique. Anything else returns candidates so the
+ * caller can ask; mid-word matches only ever appear as candidates.
  */
 export function matchAgent(query: string, agents: VoiceAgentView[]): AgentMatchResult {
   const trimmed = query.trim();
@@ -398,24 +425,35 @@ export function matchAgent(query: string, agents: VoiceAgentView[]): AgentMatchR
   const tokens = queryTokens(trimmed);
   const phrase = tokens.join(" ");
   const scored = agents
-    .map((agent) => ({ agent, score: scoreAgent(tokens, phrase, agent) }))
+    .map((agent) => scoreAgent(tokens, phrase, agent))
     .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || lastActiveTime(b.agent) - lastActiveTime(a.agent));
+    .sort(byScoreThenRecency);
 
-  const complete = scored.filter((entry) => entry.score >= 1);
-  if (complete.length === 0) {
-    return { kind: "none", suggestions: scored.slice(0, MAX_CANDIDATES).map((e) => e.agent) };
+  const exact = scored.filter((entry) => entry.exact);
+  if (exact.length > 0) {
+    const best = exact[0].score;
+    const tied = exact.filter((entry) => entry.score === best);
+    if (tied.length === 1) {
+      return { kind: "unique", agent: tied[0].agent };
+    }
+    return {
+      kind: "ambiguous",
+      exact: true,
+      candidates: tied.slice(0, MAX_CANDIDATES).map((entry) => entry.agent),
+      total: tied.length,
+    };
   }
-  const best = complete[0].score;
-  const tied = complete.filter((entry) => entry.score === best);
-  if (tied.length === 1) {
-    return { kind: "unique", agent: tied[0].agent };
+
+  const loose = scored.filter((entry) => entry.score >= 1);
+  if (loose.length > 0) {
+    return {
+      kind: "ambiguous",
+      exact: false,
+      candidates: loose.slice(0, MAX_CANDIDATES).map((entry) => entry.agent),
+      total: loose.length,
+    };
   }
-  return {
-    kind: "ambiguous",
-    candidates: tied.slice(0, MAX_CANDIDATES).map((entry) => entry.agent),
-    total: tied.length,
-  };
+  return { kind: "none", suggestions: scored.slice(0, MAX_CANDIDATES).map((e) => e.agent) };
 }
 
 export function toMatchCandidate(agent: VoiceAgentView, now: number): AgentMatchCandidate {
@@ -600,7 +638,9 @@ export function registerVoiceAssistantTools(options: RegisterVoiceAssistantTools
       if (match.kind === "ambiguous") {
         return textResult({
           sent: false,
-          reason: `"${reference}" matches ${plural(match.total, "agent")}. Ask the user which one, then call again with its agentId.`,
+          reason: match.exact
+            ? `"${reference}" matches ${plural(match.total, "agent")}. Ask the user which one, then call again with its agentId.`
+            : `No agent is named "${reference}" exactly; these come close. Ask the user which one, then call again with its agentId.`,
           candidates: match.candidates.map((agent) => toMatchCandidate(agent, now)),
         });
       }

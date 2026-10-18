@@ -1234,7 +1234,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     });
   }
 
-  // Owner-facing only: agents talk to each other through the full tools below.
+  // Hidden from agents' own catalogs to keep their tool list short. This is not a
+  // security boundary: callerAgentId comes from a query parameter the caller sets,
+  // so anyone who can reach /mcp/agents can get these tools by leaving it off.
   if (!callerAgentId) {
     registerVoiceAssistantTools({
       registerTool,

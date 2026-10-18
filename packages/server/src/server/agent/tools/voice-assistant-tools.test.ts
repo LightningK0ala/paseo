@@ -55,7 +55,12 @@ describe("matchAgent", () => {
 
   it("returns every equally good match, newest first, instead of picking one", () => {
     const result = matchAgent("the daily brief one", agents);
-    expect(result).toEqual({ kind: "ambiguous", candidates: [agents[3], agents[2]], total: 2 });
+    expect(result).toEqual({
+      kind: "ambiguous",
+      exact: true,
+      candidates: [agents[3], agents[2]],
+      total: 2,
+    });
   });
 
   it("does not treat a partial match as a target", () => {
@@ -77,6 +82,27 @@ describe("matchAgent", () => {
       agent({ id: "c2", title: "Refactor", project: "billing-service" }),
     ];
     expect(matchAgent("the b agent", pool).kind).toBe("ambiguous");
+  });
+
+  it("never sends on a word found only inside a longer word", () => {
+    const pool = [
+      agent({ id: "d1", title: "Support ticket triage", project: "helpdesk" }),
+      agent({ id: "d2", title: "Release notes", project: "paseo" }),
+    ];
+    expect(matchAgent("the port agent", pool)).toEqual({
+      kind: "ambiguous",
+      exact: false,
+      candidates: [pool[0]],
+      total: 1,
+    });
+  });
+
+  it("resolves on whole words of a project name split on punctuation", () => {
+    const pool = [
+      agent({ id: "e1", title: "Nightly run", project: "infra.deploy_tools" }),
+      agent({ id: "e2", title: "Redeploy tooling", project: "paseo" }),
+    ];
+    expect(matchAgent("deploy tools", pool)).toEqual({ kind: "unique", agent: pool[0] });
   });
 
   it("accepts an id prefix", () => {
