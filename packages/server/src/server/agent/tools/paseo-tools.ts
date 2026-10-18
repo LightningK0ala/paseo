@@ -89,6 +89,7 @@ import {
   createPaseoWorktreeCommand,
 } from "../../worktree/commands.js";
 import { registerBrowserTools } from "../../browser-tools/tools.js";
+import { registerVoiceAssistantTools } from "./voice-assistant-tools.js";
 import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
 import type {
   PaseoToolCatalog,
@@ -1230,6 +1231,19 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       broker: options.browserToolsBroker,
       callerAgentId,
       resolveCallerAgent,
+    });
+  }
+
+  // Owner-facing only: agents talk to each other through the full tools below.
+  if (!callerAgentId) {
+    registerVoiceAssistantTools({
+      registerTool,
+      agentManager,
+      agentStorage,
+      providerSnapshotManager,
+      workspaceRegistry: options.workspaceRegistry,
+      projectRegistry: options.projectRegistry,
+      logger: childLogger,
     });
   }
 
