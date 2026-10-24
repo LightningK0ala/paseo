@@ -10,12 +10,12 @@ change, so each can be rebased or dropped on its own.
 
 ## Build
 
-Use the Node version in `.tool-versions` (22.20.0). Put it first on `PATH`
+Use the Node version in `.tool-versions` (22.23.4). Put it first on `PATH`
 rather than running `mise exec`, which also tries to install the Rust, Java and
 Android toolchains the daemon does not need.
 
 ```sh
-export PATH="$HOME/.local/share/mise/installs/node/22.20.0/bin:$PATH"
+export PATH="$HOME/.local/share/mise/installs/node/$(awk '$1=="nodejs"{print $2}' .tool-versions)/bin:$PATH"
 ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 npm run build:server          # protocol, client, server, CLI (about a minute)
 npm run build:daemon-web-ui   # the web UI the release bundles (about five minutes)
