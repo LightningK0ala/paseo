@@ -198,6 +198,7 @@ function createSessionWithConfig(
     modeId?: string | null;
     model?: string | null;
     featureValues?: Record<string, unknown>;
+    internal?: boolean;
   } = {},
   logger: ReturnType<typeof createTestLogger> = createTestLogger(),
 ): ACPAgentSession {
@@ -208,6 +209,7 @@ function createSessionWithConfig(
       modeId: config.modeId ?? undefined,
       model: config.model ?? undefined,
       featureValues: config.featureValues,
+      internal: config.internal,
     },
     {
       provider: config.provider ?? "claude-acp",
@@ -1484,6 +1486,37 @@ describe("ACPAgentSession Zed parity", () => {
     });
     expect(events).not.toContainEqual(expect.objectContaining({ type: "permission_requested" }));
     expect(session.getPendingPermissions()).toEqual([]);
+  });
+
+  test("internal agents get no auto-accepted permission, terminal or file write", async () => {
+    const spawn = vi.spyOn(spawnUtils, "spawnProcess");
+    const session = createSessionWithConfig({
+      provider: "generic-acp",
+      featureValues: { auto_accept: true },
+      internal: true,
+    });
+    const events: AgentStreamEvent[] = [];
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    session.subscribe((event) => events.push(event));
+
+    void session.requestPermission({
+      sessionId: "session-1",
+      toolCall: { toolCallId: "tool-1", title: "Edit file", kind: "edit", status: "pending" },
+      options: [
+        { optionId: "allow-once", name: "Allow", kind: "allow_once" },
+        { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+      ],
+    } satisfies RequestPermissionRequest);
+    await Promise.resolve();
+
+    expect(events.map((event) => event.type)).toContain("permission_requested");
+    await expect(
+      session.createTerminal({ sessionId: "session-1", command: "rm", args: ["-rf", "/repo"] }),
+    ).rejects.toThrow("Running commands is disabled for internal agents");
+    await expect(
+      session.writeTextFile({ sessionId: "session-1", path: "/tmp/x", content: "x" }),
+    ).rejects.toThrow("Writing files is disabled for internal agents");
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   test("does not auto-accept ACP chooser requests", async () => {

@@ -111,7 +111,7 @@ import {
 } from "./opencode/subagent-presentation.js";
 import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
 import {
-  buildOpenCodePermissionRules,
+  resolveOpenCodeSessionPermissionRules,
   OpenCodeProviderOptionsSchema,
   type OpenCodeProviderOptions,
 } from "./opencode/options.js";
@@ -1456,10 +1456,7 @@ export class OpenCodeAgentClient implements AgentClient {
 
     // OpenCode stores permission rules on the session, so they are set here and on resume
     // rather than sent with each prompt, which drops them.
-    const permission = buildOpenCodePermissionRules(
-      openCodeConfig.providerOptions,
-      openCodeConfig.toolPolicy,
-    );
+    const permission = resolveOpenCodeSessionPermissionRules(openCodeConfig);
 
     try {
       // Creating the first session for a directory is part of OpenCode coming up, so it
@@ -1570,7 +1567,7 @@ export class OpenCodeAgentClient implements AgentClient {
     config: OpenCodeAgentConfig,
     sessionId: string,
   ): Promise<void> {
-    const permission = buildOpenCodePermissionRules(config.providerOptions, config.toolPolicy);
+    const permission = resolveOpenCodeSessionPermissionRules(config);
     if (!permission) return;
     const response = readOpenCodeRecord(
       await client.session.update({ sessionID: sessionId, directory: config.cwd, permission }),
@@ -3472,7 +3469,8 @@ class OpenCodeAgentSession implements AgentSession {
     this.logger = logger.child({ agentId: this.agentId });
     this.modelContextWindowsByModelKey = modelContextWindowsByModelKey;
     this.currentMode = normalizeOpenCodeModeId(config.modeId);
-    this.autoAcceptEnabled = !config.toolPolicy && isOpenCodeAutoAcceptEnabled(config);
+    this.autoAcceptEnabled =
+      !config.internal && !config.toolPolicy && isOpenCodeAutoAcceptEnabled(config);
     this.releaseBridge = releaseBridge ?? null;
     this.persistSession = persistSession;
     this.selectedModelContextWindowMaxTokens = this.resolveConfiguredModelContextWindowMaxTokens(

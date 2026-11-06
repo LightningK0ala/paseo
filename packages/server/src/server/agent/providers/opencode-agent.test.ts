@@ -2572,6 +2572,33 @@ describe("OpenCode adapter startTurn error handling", () => {
     }
   });
 
+  test("denies every tool to internal agents, whatever the user's permissions allow", async () => {
+    const cwd = tmpCwd();
+    const runtime = new TestOpenCodeHarness();
+    const openCode = new TestOpenCodeClient();
+    runtime.enqueueClient(openCode);
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
+      serverManager: runtime,
+      createClient: runtime.createClient,
+    });
+    try {
+      const session = await client.createSession({
+        provider: "opencode",
+        cwd,
+        internal: true,
+        providerOptions: { permission: "allow" },
+      });
+      try {
+        const created = openCode.calls.sessionCreate[0] as { permission?: unknown };
+        expect(created.permission).toEqual([{ permission: "*", pattern: "*", action: "deny" }]);
+      } finally {
+        await session.close();
+      }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   test("waits for the stop abort and provider idle before starting the next prompt", async () => {
     const { parent: session, openCode } = await createParentSession("ses_unit_test");
     const retryStarted = createTestDeferred<void>();

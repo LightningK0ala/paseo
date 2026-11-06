@@ -1281,6 +1281,22 @@ describe("OMP agent client and session", () => {
     expect(omp.runtimeSessions().every((session) => session.closed)).toBe(true);
   });
 
+  test("runs internal agents without tools, also after a crash relaunch", async () => {
+    const omp = new OmpHarness();
+    await omp.start({ internal: true, modeId: "full" });
+    omp.processExit("OMP RPC process exited with code 1 and signal null");
+    await omp.startTurn("continue");
+
+    const launches = omp.runtimeLaunches().map((launch) => ({
+      noTools: launch.argv.includes("--no-tools"),
+      approvalMode: launch.argv[launch.argv.indexOf("--approval-mode") + 1],
+    }));
+    expect(launches).toEqual([
+      { noTools: true, approvalMode: "always-ask" },
+      { noTools: true, approvalMode: "always-ask" },
+    ]);
+  });
+
   test("announces a fresh native session when an internal agent recovers", async () => {
     const omp = new OmpHarness();
     await omp.start({ internal: true });

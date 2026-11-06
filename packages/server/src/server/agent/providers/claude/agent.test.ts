@@ -1054,6 +1054,45 @@ describe("ClaudeAgentSession features", () => {
     await userSession.close();
   });
 
+  test("runs internal Claude agents without tools, MCP or a permissive mode", async () => {
+    const { queryFactory } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const internalSession = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      internal: true,
+      modeId: "bypassPermissions",
+      mcpServers: { docs: { type: "http", url: "http://127.0.0.1:9/mcp" } },
+    });
+    const userSession = await client.createSession({ provider: "claude", cwd: process.cwd() });
+
+    await internalSession.startTurn("hello");
+    await userSession.startTurn("hello");
+
+    const internalOptions = queryFactory.mock.calls[0]?.[0].options;
+    expect({
+      tools: internalOptions.tools,
+      mcpServers: internalOptions.mcpServers,
+      strictMcpConfig: internalOptions.strictMcpConfig,
+      permissionMode: internalOptions.permissionMode,
+      allowDangerouslySkipPermissions: internalOptions.allowDangerouslySkipPermissions,
+    }).toEqual({
+      tools: [],
+      mcpServers: {},
+      strictMcpConfig: true,
+      permissionMode: "default",
+      allowDangerouslySkipPermissions: false,
+    });
+    expect(queryFactory.mock.calls[1]?.[0].options.tools).toBeUndefined();
+
+    await internalSession.close();
+    await userSession.close();
+  });
+
   test("turns Claude thinking off without retaining an effort level", async () => {
     const { queryFactory, launches } = createQueryMock();
     const client = new ClaudeAgentClient({

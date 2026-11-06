@@ -859,7 +859,22 @@ export function deriveFeaturesFromACP(
 }
 
 function isACPAutoAcceptEnabled(config: AgentSessionConfig): boolean {
-  return config.featureValues?.[ACP_AUTO_ACCEPT_FEATURE_ID] === true;
+  // Internal agents never get a tool approved for them; the agent manager denies.
+  return config.internal !== true && config.featureValues?.[ACP_AUTO_ACCEPT_FEATURE_ID] === true;
+}
+
+// ACP has no switch that removes an agent's own tools, so internal agents get the
+// most the client controls: no terminal, no file access through Paseo, and
+// every permission request denied by the agent manager.
+const INTERNAL_AGENT_ACP_CLIENT_CAPABILITIES: ACPClientCapabilities = {
+  fs: { readTextFile: false, writeTextFile: false },
+  terminal: false,
+};
+
+function assertACPClientToolsAllowed(config: AgentSessionConfig, operation: string): void {
+  if (config.internal) {
+    throw new Error(`${operation} is disabled for internal agents`);
+  }
 }
 
 function buildACPAutoAcceptFeature(config: AgentSessionConfig): AgentFeature {
@@ -2693,6 +2708,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   async readTextFile(params: ReadTextFileRequest): Promise<{ content: string }> {
+    assertACPClientToolsAllowed(this.config, "Reading files");
     const raw = await fs.readFile(params.path, "utf8");
     if (!params.line && !params.limit) {
       return { content: raw };
@@ -2704,12 +2720,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   async writeTextFile(params: WriteTextFileRequest): Promise<Record<string, never>> {
+    assertACPClientToolsAllowed(this.config, "Writing files");
     await fs.mkdir(path.dirname(params.path), { recursive: true });
     await fs.writeFile(params.path, params.content, "utf8");
     return {};
   }
 
   async createTerminal(params: CreateTerminalRequest): Promise<{ terminalId: string }> {
+    assertACPClientToolsAllowed(this.config, "Running commands");
     const terminalId = randomUUID();
     const env = Object.fromEntries(
       (params.env ?? []).map((entry: EnvVariable) => [entry.name, entry.value]),
@@ -2872,7 +2890,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           protocolVersion: PROTOCOL_VERSION,
           clientCapabilities: buildACPClientCapabilities(
             this.clientCapabilityMeta,
-            this.clientCapabilities,
+            this.config.internal ? INTERNAL_AGENT_ACP_CLIENT_CAPABILITIES : this.clientCapabilities,
           ),
           clientInfo: { name: "Paseo", version: "dev" },
         }),

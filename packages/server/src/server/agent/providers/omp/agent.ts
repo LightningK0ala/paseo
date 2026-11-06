@@ -2298,7 +2298,11 @@ export class OmpAgentClient implements AgentClient {
     config: AgentSessionConfig,
     launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {
-    const launchMode = this.resolveLaunchMode(config.modeId, config.providerOptions);
+    const launchMode = this.resolveLaunchMode(
+      config.modeId,
+      config.providerOptions,
+      config.internal,
+    );
     const startInput: OmpStartSessionInput = {
       cwd: config.cwd,
       protocolMode: "rpc-ui",
@@ -2374,6 +2378,7 @@ export class OmpAgentClient implements AgentClient {
     const launchMode = this.resolveLaunchMode(
       resumeConfig.modeId,
       resumeConfig.config.providerOptions,
+      resumeConfig.config.internal,
     );
     const startInput = buildResumeStartInput({
       resumeConfig,
@@ -2455,7 +2460,7 @@ export class OmpAgentClient implements AgentClient {
     launchContext?: AgentLaunchContext,
   ): OmpAgentSessionOptions["restartRuntime"] {
     return async (sessionFile, modeId) => {
-      const launchMode = this.resolveLaunchMode(modeId, config.providerOptions);
+      const launchMode = this.resolveLaunchMode(modeId, config.providerOptions, config.internal);
       const next = await this.resolveRuntime(config.providerOptions).startSession({
         ...startInput,
         model: config.model,
@@ -2619,11 +2624,17 @@ export class OmpAgentClient implements AgentClient {
   private resolveLaunchMode(
     modeId: string | undefined,
     providerOptions?: Record<string, unknown>,
+    internal?: boolean,
   ): {
     modeId: string;
     extraArgs: string[];
   } {
-    return resolveOmpLaunchMode(modeId, resolveOmpProviderOptions(providerOptions).modelRoles);
+    const modelRoles = resolveOmpProviderOptions(providerOptions).modelRoles;
+    if (!internal) return resolveOmpLaunchMode(modeId, modelRoles);
+    // Internal agents turn possibly injected text into text: no tools, and any
+    // that remain must ask, which the agent manager denies. Restarts keep this.
+    const strictest = resolveOmpLaunchMode("ask", modelRoles);
+    return { ...strictest, extraArgs: [...strictest.extraArgs, "--no-tools"] };
   }
 
   private resolveRuntime(providerOptions: Record<string, unknown> | undefined): OmpRuntime {

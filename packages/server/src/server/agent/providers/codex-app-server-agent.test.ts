@@ -847,6 +847,38 @@ describe("Codex app-server provider", () => {
     );
   });
 
+  test("internal agents run read-only, ask before commands, and have no MCP or web search", async () => {
+    const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const session = createSession({
+      internal: true,
+      modeId: "full-access",
+      thinkingOptionId: "medium",
+      providerOptions: { sandbox_mode: "danger-full-access", approval_policy: "never" },
+    });
+    session.currentThreadId = null;
+    session.activeForegroundTurnId = null;
+    session.client = {
+      request: vi.fn(async (method: string, params: Record<string, unknown>) => {
+        requests.push({ method, params });
+        if (method === "thread/start") return { thread: { id: "internal-thread" } };
+        if (method === "turn/start") return {};
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+    };
+
+    await session.startTurn("name this branch");
+
+    const threadStart = requests.find((req) => req.method === "thread/start")?.params;
+    const turnStart = requests.find((req) => req.method === "turn/start")?.params;
+    expect(threadStart?.config).toMatchObject({
+      sandbox_mode: "read-only",
+      approval_policy: "untrusted",
+      web_search: "disabled",
+      mcp_servers: {},
+    });
+    expect(turnStart?.sandboxPolicy).toEqual({ type: "readOnly" });
+  });
+
   test("setMode auto-review sends approvalsReviewer to thread/start", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     const session = createSession(

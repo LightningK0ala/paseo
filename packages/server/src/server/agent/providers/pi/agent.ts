@@ -1164,6 +1164,12 @@ function createRuntime(
   });
 }
 
+// Internal agents turn possibly injected text into text: no tools at all. Pi
+// builds that predate one of these flags ignore it.
+function internalAgentPiLaunchArgs(config: AgentSessionConfig): { extraArgs?: string[] } {
+  return config.internal ? { extraArgs: ["--no-tools", "--no-mcp"] } : {};
+}
+
 export class PiRpcAgentSession implements AgentSession {
   readonly provider: AgentProvider;
   readonly capabilities: AgentCapabilityFlags;
@@ -2514,6 +2520,7 @@ export class PiRpcAgentClient implements AgentClient {
         model: config.model,
         thinkingOptionId: normalizePiThinkingOption(config.thinkingOptionId) ?? undefined,
         noSession: config.internal === true,
+        ...internalAgentPiLaunchArgs(config),
         env: launchContext?.env,
         mcpConfigPath: mcpConfigFile?.path,
         extensionPaths: paseoExtension ? [paseoExtension.path] : undefined,

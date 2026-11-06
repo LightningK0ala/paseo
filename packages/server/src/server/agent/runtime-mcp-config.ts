@@ -26,6 +26,14 @@ export function stripInternalPaseoMcpServer(config: AgentSessionConfig): AgentSe
   return next;
 }
 
+/** Drops every MCP server, for agents that must run without tools. */
+export function withoutMcpServers(config: AgentSessionConfig): AgentSessionConfig {
+  if (!config.mcpServers) return config;
+  const next = { ...config };
+  delete next.mcpServers;
+  return next;
+}
+
 export function withRuntimePaseoMcpServer(params: {
   config: AgentSessionConfig;
   agentId: string;

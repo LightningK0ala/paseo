@@ -244,6 +244,22 @@ test("starts internal Pi agents without persisting a native session", async () =
   await session.close();
 });
 
+test("starts internal Pi agents with every tool and MCP server disabled", async () => {
+  const pi = new FakePi();
+  const client = createClient(pi);
+  const internal = await client.createSession(createConfig({ internal: true }));
+  const normal = await client.createSession(createConfig());
+
+  expect(pi.recordedLaunches.map((launch) => launch.argv.includes("--no-tools"))).toEqual([
+    true,
+    false,
+  ]);
+  expect(pi.recordedLaunches[0]?.argv).toContain("--no-mcp");
+
+  await internal.close();
+  await normal.close();
+});
+
 test("keeps normal Pi agent sessions persisted", async () => {
   const pi = new FakePi();
   const client = createClient(pi);

@@ -48,6 +48,19 @@ export interface OpenCodePermissionRule {
   action: "ask" | "allow" | "deny";
 }
 
+/**
+ * Internal agents turn possibly injected text into text, so every OpenCode tool
+ * is denied for them, whatever the user's permission settings say.
+ */
+export function resolveOpenCodeSessionPermissionRules(config: {
+  providerOptions?: OpenCodeProviderOptions;
+  toolPolicy?: ToolPolicy;
+  internal?: boolean;
+}): OpenCodePermissionRule[] | undefined {
+  if (config.internal) return [{ permission: "*", pattern: "*", action: "deny" }];
+  return buildOpenCodePermissionRules(config.providerOptions, config.toolPolicy);
+}
+
 export function buildOpenCodePermissionRules(
   options: OpenCodeProviderOptions | undefined,
   toolPolicy: ToolPolicy | undefined,

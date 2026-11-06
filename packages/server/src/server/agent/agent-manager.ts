@@ -80,7 +80,11 @@ import {
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
 import { isStaleProviderSessionError } from "./stale-provider-session-error.js";
-import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
+import {
+  stripInternalPaseoMcpServer,
+  withoutMcpServers,
+  withRuntimePaseoMcpServer,
+} from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { PaseoToolCatalogFactory } from "./tools/types.js";
 import { isPaseoToolPolicyEnabled } from "./paseo-tool-policy.js";
@@ -4616,10 +4620,37 @@ export class AgentManager {
     const hadPendingPermissions = agent.pendingPermissions.size > 0;
     agent.pendingPermissions.set(event.request.id, event.request);
     this.refreshSessionPersistence(agent);
+    if (agent.internal) {
+      // Nobody answers an internal agent's prompts, and it must not use tools.
+      void this.refuseInternalAgentPermission(agent.id, event.request);
+      return;
+    }
     if (!hadPendingPermissions && !agent.internal) {
       this.broadcastAgentAttention(agent, "permission");
     }
     this.emitState(agent);
+  }
+
+  private async refuseInternalAgentPermission(
+    agentId: string,
+    request: AgentPermissionRequest,
+  ): Promise<void> {
+    this.logger.warn(
+      { agentId, permission: request.name, kind: request.kind },
+      "Internal agent asked for a tool permission; denying it and closing the agent",
+    );
+    try {
+      await this.respondToPermission(agentId, request.id, {
+        behavior: "deny",
+        message: "Tools are disabled for this task.",
+        interrupt: true,
+      });
+    } catch (error) {
+      this.logger.warn({ err: error, agentId }, "Denying an internal agent permission failed");
+    }
+    await this.closeAgent(agentId).catch((error: unknown) => {
+      this.logger.warn({ err: error, agentId }, "Closing an internal agent failed");
+    });
   }
 
   private onStreamPermissionResolved(params: {
@@ -5161,13 +5192,16 @@ export class AgentManager {
     agentId: string,
     options: { env?: Record<string, string>; purpose?: AgentResumePurpose } = {},
   ): Promise<PreparedSessionConfig> {
-    const storedConfig = await this.normalizeConfig(stripInternalPaseoMcpServer(config), {
-      env: options.env,
-      purpose: options.purpose,
-    });
-    const paseoToolPolicy = this.paseoToolsEnabled
-      ? this.resolvePaseoToolPolicy(storedConfig.provider)
-      : { enabled: false };
+    const storedConfig = await this.normalizeConfig(
+      config.internal ? withoutMcpServers(config) : stripInternalPaseoMcpServer(config),
+      { env: options.env, purpose: options.purpose },
+    );
+    // Internal agents read conversation text that may carry prompt injection, so
+    // they get no Paseo tools and no MCP servers of any kind.
+    const paseoToolPolicy =
+      this.paseoToolsEnabled && !storedConfig.internal
+        ? this.resolvePaseoToolPolicy(storedConfig.provider)
+        : { enabled: false };
     const launchConfig = this.applyDaemonAppendSystemPrompt(
       withRuntimePaseoMcpServer({
         config: storedConfig,

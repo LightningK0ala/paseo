@@ -155,6 +155,25 @@ const CLAUDE_SETTING_SOURCES: NonNullable<ClaudeOptions["settingSources"]> = [
   "local",
 ];
 
+/**
+ * Internal agents turn text into text (a branch name, a commit message, a reply
+ * suggestion) from input that may carry prompt injection. They get no built-in
+ * tools, no MCP servers from any source, no subagents, and a mode in which any
+ * tool that still appears must ask, which the agent manager denies.
+ */
+function isolateInternalClaudeOptions(options: ClaudeOptions): ClaudeOptions {
+  const { agents: _agents, allowedTools: _allowedTools, ...rest } = options;
+  return {
+    ...rest,
+    permissionMode: "default",
+    allowDangerouslySkipPermissions: false,
+    tools: [],
+    mcpServers: {},
+    strictMcpConfig: true,
+    disallowedTools: [...(options.disallowedTools ?? []), "mcp__*"],
+  };
+}
+
 function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
@@ -3434,7 +3453,7 @@ class ClaudeAgentSession implements AgentSession {
         ...this.runtimeSettings.disallowedTools,
       ];
     }
-    return base;
+    return this.config.internal ? isolateInternalClaudeOptions(base) : base;
   }
 
   private buildSettingsOptions(

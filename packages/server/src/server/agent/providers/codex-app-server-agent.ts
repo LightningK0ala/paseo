@@ -262,6 +262,15 @@ const CODEX_MODES: AgentMode[] = [
 
 const DEFAULT_CODEX_MODE_ID = "auto";
 
+// Codex cannot drop its shell tool, so internal agents get its strictest setup:
+// a read-only, offline sandbox where any command that is not known to be safe
+// asks for approval (which the agent manager denies), and no web search.
+const INTERNAL_AGENT_CODEX_OPTIONS = {
+  sandbox_mode: "read-only",
+  approval_policy: "untrusted",
+  web_search: "disabled",
+} as const satisfies CodexProviderOptions;
+
 interface CodexAppServerClientLike {
   request(method: string, params?: unknown): Promise<unknown>;
   forkThread?(params: CodexThreadForkParams): Promise<CodexThreadForkResponse>;
@@ -3558,6 +3567,13 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.currentMode = config.modeId ?? DEFAULT_CODEX_MODE_ID;
     this.providerOptions =
       validateProviderOptions("codex", CodexProviderOptionsSchema, config.providerOptions) ?? {};
+    if (config.internal) {
+      // Internal agents turn possibly injected text into text. User sandbox and
+      // approval overrides would otherwise win over the mode, so pin them too.
+      this.currentMode = "read-only";
+      this.hasWorkflowModeOverride = true;
+      this.providerOptions = { ...this.providerOptions, ...INTERNAL_AGENT_CODEX_OPTIONS };
+    }
     this.config = config;
     this.harnessEnvironment = deps.environment ?? buildCodexAppServerEnv();
     this.asyncQuestions = new CodexAsyncQuestions(resumeHandle?.metadata?.asyncQuestions);
@@ -5352,6 +5368,10 @@ export class CodexAppServerAgentSession implements AgentSession {
         mcpServers[name] = toCodexMcpConfig(serverConfig);
       }
       innerConfig.mcp_servers = mcpServers;
+    }
+    if (this.config.internal) {
+      // Replaces the user's MCP servers from config.toml for this thread.
+      innerConfig.mcp_servers = {};
     }
     const configured = applyCodexToolPolicy(innerConfig, this.config.toolPolicy);
     return Object.keys(configured).length > 0 ? configured : null;
