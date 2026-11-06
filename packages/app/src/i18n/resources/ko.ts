@@ -120,6 +120,9 @@ export const ko: TranslationResources = {
       fallback: "메시지...",
       terminal: "Prompt",
     },
+    replySuggestion: {
+      use: "제안 사용",
+    },
     input: {
       accessibilityLabel: "에이전트에게 메시지...",
       terminalAccessibilityLabel: "Terminal prompt",
@@ -2108,6 +2111,9 @@ export const ko: TranslationResources = {
       fallbackHint: "사용할 수 없으면 Paseo가 다른 사용 가능한 모델을 사용합니다",
       docs: "문서",
       saveError: "메타데이터 생성을 업데이트할 수 없습니다",
+      replySuggestions: "답장 제안",
+      replySuggestionsHint:
+        "에이전트가 작업을 마치면 다음에 보낼 만한 메시지를 입력창에 제안합니다",
     },
     general: {
       title: "일반",

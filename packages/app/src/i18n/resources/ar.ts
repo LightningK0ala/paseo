@@ -120,6 +120,9 @@ export const ar: TranslationResources = {
       fallback: "رسالة...",
       terminal: "Prompt",
     },
+    replySuggestion: {
+      use: "استخدام الاقتراح",
+    },
     input: {
       accessibilityLabel: "وكيل الرسائل...",
       terminalAccessibilityLabel: "Terminal prompt",
@@ -2098,6 +2101,8 @@ export const ar: TranslationResources = {
       fallbackHint: "إذا لم يكن متاحًا، يستخدم Paseo نموذجًا آخر متاحًا",
       docs: "الوثائق",
       saveError: "تعذر تحديث إنشاء البيانات الوصفية",
+      replySuggestions: "الردود المقترحة",
+      replySuggestionsHint: "بعد أن ينهي الوكيل، اقترح رسالتك التالية المحتملة في حقل الكتابة",
     },
     general: {
       title: "عام",

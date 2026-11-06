@@ -26,7 +26,7 @@ import { ComposerDock } from "@/composer/dock";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { RetainedChatContent } from "./retained-chat-content";
-import { Composer } from "@/composer";
+import { Composer, type ComposerReplySuggestion } from "@/composer";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import {
   resolveComposerTrackControlClearance,
@@ -42,6 +42,7 @@ import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/l
 import { isNative, isWeb } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
+import { useReplySuggestion } from "@/composer/reply-suggestion";
 import {
   type AgentScreenAgent,
   type AgentScreenContinuity,
@@ -1559,6 +1560,12 @@ function ActiveAgentComposer({
     () => [workspaceAttachmentScopeKey],
     [workspaceAttachmentScopeKey],
   );
+  const replySuggestionText = useReplySuggestion({ serverId, agentId });
+  const replaceDraftText = agentInputDraft.replaceText;
+  const replySuggestion = useMemo((): ComposerReplySuggestion | null => {
+    if (!replySuggestionText) return null;
+    return { text: replySuggestionText, onAccept: () => replaceDraftText(replySuggestionText) };
+  }, [replaceDraftText, replySuggestionText]);
   const handleOpenWorkspaceAttachment = useCallback(
     (attachment: WorkspaceComposerAttachment) => {
       if (attachment.kind !== "review") {
@@ -1638,6 +1645,7 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
+        replySuggestion={replySuggestion}
       />
     </View>
   );

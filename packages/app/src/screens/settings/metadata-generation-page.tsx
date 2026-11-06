@@ -7,8 +7,10 @@ import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Switch } from "@/components/ui/switch";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { useSessionStore } from "@/stores/session-store";
 import { buildSelectableProviderSelectorProviders } from "@/provider-selection/provider-selection";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { settingsStyles } from "@/styles/settings";
@@ -158,8 +160,50 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
             />
           </View>
         ) : null}
+        <ReplySuggestionsRow serverId={serverId} />
       </View>
     </SettingsSection>
+  );
+}
+
+function ReplySuggestionsRow({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const supportsReplySuggestions = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.replySuggestions === true,
+  );
+  const replySuggestionsEnabled = config?.metadataGeneration.replySuggestions?.enabled === true;
+  const handleReplySuggestionsChange = useCallback(
+    (enabled: boolean) => {
+      patchConfig({ metadataGeneration: { replySuggestions: { enabled } } }).catch((error) => {
+        Alert.alert(
+          t("settings.metadataGeneration.saveError"),
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    },
+    [patchConfig, t],
+  );
+
+  if (!supportsReplySuggestions) return null;
+
+  return (
+    <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.metadataGeneration.replySuggestions")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.metadataGeneration.replySuggestionsHint")}
+        </Text>
+      </View>
+      <Switch
+        value={replySuggestionsEnabled}
+        onValueChange={handleReplySuggestionsChange}
+        accessibilityLabel={t("settings.metadataGeneration.replySuggestions")}
+        testID="metadata-generation-reply-suggestions-switch"
+      />
+    </View>
   );
 }
 

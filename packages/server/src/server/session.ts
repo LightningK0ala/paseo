@@ -100,6 +100,7 @@ import {
 } from "./workspace-labels/index.js";
 
 import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
+import type { ReplySuggestionService } from "./agent/reply-suggestions.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
@@ -519,6 +520,7 @@ export interface SessionOptions {
     listLegacyUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }>;
   };
   orchestrationSkills?: import("./orchestration-skills/index.js").OrchestrationSkills;
+  replySuggestions?: ReplySuggestionService;
   mcpBaseUrl?: string | null;
   stt: Resolvable<SpeechToTextProvider | null>;
   sttLanguage?: string;
@@ -737,6 +739,7 @@ export class Session {
   private readonly pushNotifications: PushNotifications;
   private readonly pluginRuntime: SessionOptions["pluginRuntime"];
   private readonly orchestrationSkills: SessionOptions["orchestrationSkills"];
+  private readonly replySuggestions: ReplySuggestionService | undefined;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeProjectMutations: (() => void) | null = null;
   private unsubscribePluginChanges: (() => void) | null = null;
@@ -834,6 +837,7 @@ export class Session {
       daemonConfigStore,
       pluginRuntime,
       orchestrationSkills,
+      replySuggestions,
       stt,
       sttLanguage,
       tts,
@@ -877,6 +881,7 @@ export class Session {
     this.worktreesRoot = worktreesRoot;
     this.pluginRuntime = pluginRuntime;
     this.orchestrationSkills = orchestrationSkills;
+    this.replySuggestions = replySuggestions;
     this.sessionLogger = logger.child({
       module: "session",
       clientId: this.clientId,
@@ -2680,6 +2685,8 @@ export class Session {
       }
       case "agent.fork_context.request":
         return this.handleAgentForkContextRequest(msg);
+      case "agent.reply_suggestion.get.request":
+        return this.handleAgentReplySuggestionGetRequest(msg);
       default:
         return undefined;
     }
@@ -7980,6 +7987,35 @@ export class Session {
         },
         source,
       );
+    }
+  }
+
+  private async handleAgentReplySuggestionGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.reply_suggestion.get.request" }>,
+  ): Promise<void> {
+    try {
+      const result = this.replySuggestions
+        ? await this.replySuggestions.get(msg.agentId)
+        : { turnKey: null, suggestion: null };
+      this.emit({
+        type: "agent.reply_suggestion.get.response",
+        payload: { requestId: msg.requestId, agentId: msg.agentId, ...result, error: null },
+      });
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, agentId: msg.agentId },
+        "Failed to handle agent.reply_suggestion.get.request",
+      );
+      this.emit({
+        type: "agent.reply_suggestion.get.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          turnKey: null,
+          suggestion: null,
+          error: getErrorMessage(error),
+        },
+      });
     }
   }
 

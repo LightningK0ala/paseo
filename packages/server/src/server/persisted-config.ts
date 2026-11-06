@@ -171,6 +171,7 @@ const StructuredGenerationProviderConfigSchema = z
 const AgentMetadataGenerationSchema = z
   .object({
     providers: z.array(StructuredGenerationProviderConfigSchema).optional(),
+    replySuggestions: z.object({ enabled: z.boolean().optional() }).strict().optional(),
   })
   .strict();
 

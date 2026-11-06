@@ -1,6 +1,6 @@
 ---
 title: Metadata generation
-description: How Paseo uses providers to generate branch names, commit messages, and pull request text, and how to configure them.
+description: How Paseo uses providers to generate branch names, commit messages, pull request text, and suggested replies, and how to configure them.
 nav: Metadata generation
 order: 42
 category: Configuration
@@ -16,6 +16,7 @@ Paseo generates these kinds of metadata:
 - **Worktree branch names** — a slug for a new worktree-isolated workspace's branch.
 - **Commit messages** — a concise message for the changes you're committing.
 - **Pull request title and body** — drafted from the diff when you open a PR.
+- **Suggested replies** — your likely next message after an agent finishes a turn (see below).
 
 A workspace title and its branch name are produced together from the same prompt, but you configure their wording independently (see below).
 
@@ -31,7 +32,7 @@ The candidate list is assembled in this order:
    2. `gpt-5.4-mini` (low reasoning)
    3. `minimax-m3`
    4. `nemotron-3-super`
-3. **The model currently selected** for that agent or draft, as a last resort.
+3. **The model currently selected** for that agent or draft, as a last resort. Suggested replies skip this step, so they never run on the agent's own, possibly expensive, model.
 
 Each default is a match on the model id or name, so the first enabled provider that ships a matching model wins. Anything that can't be resolved against an enabled provider is skipped. Duplicates are removed, then generation tries the list top to bottom.
 
@@ -65,6 +66,24 @@ Each entry accepts:
 - `thinkingOptionId` (optional) — a reasoning/thinking level for models that support one. Falls back to the model's default if the value isn't valid for that model.
 
 The Settings screen replaces only the first entry and preserves the rest of a custom list. Restart the daemon after editing the file directly.
+
+## Suggested replies
+
+When an agent finishes a turn and you open it, Paseo predicts the message you are most likely to send next and shows it as the composer's dimmed placeholder. Press **Tab** in the empty composer, or tap **Use suggestion** on a touch screen, to put it in the input. It is never sent for you. When the latest reply leaves no obvious next step, such as a plain answer to a question, no suggestion appears.
+
+Paseo generates a suggestion once per finished turn, and only for turns someone opens. Every client shares the result, so reopening the agent or switching devices costs nothing more. The daemon keeps suggestions in memory, so after a daemon restart, opening an agent generates its suggestion again. Like other metadata, one generation tries the next model in the list when one fails, so a failing provider can add a call. The prompt contains the agent's latest reply and the few messages before it.
+
+Turn it off in **Settings → Host → Metadata → Suggested replies**, or set it in `~/.paseo/config.json`:
+
+```json
+{
+  "agents": {
+    "metadataGeneration": {
+      "replySuggestions": { "enabled": false }
+    }
+  }
+}
+```
 
 ## Per-project instructions
 

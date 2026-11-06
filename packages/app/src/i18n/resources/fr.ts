@@ -122,6 +122,9 @@ export const fr: TranslationResources = {
       fallback: "Message…",
       terminal: "Prompt",
     },
+    replySuggestion: {
+      use: "Utiliser la suggestion",
+    },
     input: {
       accessibilityLabel: "Écrire à l’agent…",
       terminalAccessibilityLabel: "Prompt du terminal",
@@ -2143,6 +2146,9 @@ export const fr: TranslationResources = {
       fallbackHint: "S’il est indisponible, Paseo utilise un autre modèle disponible",
       docs: "Documentation",
       saveError: "Impossible de mettre à jour la génération de métadonnées",
+      replySuggestions: "Réponses suggérées",
+      replySuggestionsHint:
+        "Quand un agent a terminé, propose votre prochain message probable dans le champ de saisie",
     },
     general: {
       title: "Général",

@@ -121,6 +121,9 @@ export const ja: TranslationResources = {
       fallback: "メッセージ...",
       terminal: "Prompt",
     },
+    replySuggestion: {
+      use: "提案を使用",
+    },
     input: {
       accessibilityLabel: "エージェントにメッセージ...",
       terminalAccessibilityLabel: "Terminal prompt",
@@ -2118,6 +2121,9 @@ export const ja: TranslationResources = {
       fallbackHint: "利用できない場合、Paseo は別の利用可能なモデルを使用します",
       docs: "ドキュメント",
       saveError: "メタデータ生成を更新できません",
+      replySuggestions: "返信の提案",
+      replySuggestionsHint:
+        "エージェントの処理が終わったら、次に送りそうなメッセージを入力欄に提案します",
     },
     general: {
       title: "一般",

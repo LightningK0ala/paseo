@@ -7,6 +7,8 @@ interface ComposerHeightArgs {
   textareaRef: RefObject<HTMLElement | null>;
   minHeight: number;
   maxHeight: number;
+  /** An empty composer grows to fit its placeholder, e.g. a multi-line suggested reply. */
+  placeholder?: string;
 }
 
 const COPIED_STYLES = [
@@ -36,11 +38,12 @@ export function useComposerHeight({
   textareaRef,
   minHeight,
   maxHeight,
+  placeholder,
 }: ComposerHeightArgs): ComposerHeightResult {
   const [height, setHeight] = useState(minHeight);
   const heightRef = useRef(minHeight);
-  const paramsRef = useRef({ getText, minHeight, maxHeight });
-  paramsRef.current = { getText, minHeight, maxHeight };
+  const paramsRef = useRef({ getText, minHeight, maxHeight, placeholder });
+  paramsRef.current = { getText, minHeight, maxHeight, placeholder };
   const mirrorRef = useRef<HTMLTextAreaElement | null>(null);
 
   const setBoundedHeight = useCallback((nextHeight: number) => {
@@ -64,7 +67,8 @@ export function useComposerHeight({
         mirror.style[property] = computedStyle[property];
       }
       mirror.style.width = `${sourceWidth}px`;
-      mirror.value = text.endsWith("\n") ? `${text} ` : text;
+      const fitted = text.length > 0 ? text : (paramsRef.current.placeholder ?? "");
+      mirror.value = fitted.endsWith("\n") ? `${fitted} ` : fitted;
       setBoundedHeight(mirror.scrollHeight);
     },
     [setBoundedHeight, textareaRef],
@@ -101,7 +105,7 @@ export function useComposerHeight({
 
   useLayoutEffect(() => {
     measure(getText());
-  }, [maxHeight, minHeight, getText, measure]);
+  }, [maxHeight, minHeight, getText, measure, placeholder]);
 
   useEffect(() => {
     const source = textareaRef.current;

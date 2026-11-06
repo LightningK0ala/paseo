@@ -101,6 +101,10 @@ export interface ComposerInputSnapshot {
 
 export interface ComposerKeyPressEvent {
   key: string;
+  shiftKey: boolean;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
   preventDefault: () => void;
   input: ComposerInputSnapshot;
 }
@@ -173,6 +177,8 @@ export interface MessageInputProps {
   textReplacement: TextReplacement;
   /** Replaces the submit icon with this label, still inside the composer's own toolbar row. */
   submitLabel?: string;
+  /** Hides the web focus-shortcut hint, e.g. while the placeholder is a long suggested reply. */
+  hideFocusHint?: boolean;
 }
 
 export interface MessageInputRef {
@@ -199,6 +205,7 @@ type WebTextInputKeyPressEvent = NativeSyntheticEvent<
     metaKey?: boolean;
     ctrlKey?: boolean;
     shiftKey?: boolean;
+    altKey?: boolean;
     // Web-only: present on DOM KeyboardEvent during IME composition (CJK input).
     isComposing?: boolean;
     keyCode?: number;
@@ -402,6 +409,10 @@ function handleDesktopKeyPressImpl(
   if (ctx.onKeyPressCallback) {
     const handled = ctx.onKeyPressCallback({
       key: event.nativeEvent.key,
+      shiftKey: event.nativeEvent.shiftKey === true,
+      altKey: event.nativeEvent.altKey === true,
+      ctrlKey: event.nativeEvent.ctrlKey === true,
+      metaKey: event.nativeEvent.metaKey === true,
       preventDefault: () => event.preventDefault(),
       input: ctx.input,
     });
@@ -1083,6 +1094,15 @@ interface ResolvedMessageInputProps {
   readOnly: boolean;
   textReplacement: TextReplacement;
   submitLabel: string | undefined;
+  hideFocusHint: boolean;
+}
+
+function resolveFocusHintVisible(input: {
+  isInputFocused: boolean;
+  value: string;
+  hideFocusHint: boolean;
+}): boolean {
+  return isWeb && !input.isInputFocused && !input.value && !input.hideFocusHint;
 }
 
 function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInputProps {
@@ -1130,6 +1150,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     readOnly: props.readOnly ?? false,
     textReplacement: props.textReplacement,
     submitLabel: props.submitLabel,
+    hideFocusHint: props.hideFocusHint ?? false,
   };
 }
 
@@ -1185,6 +1206,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       readOnly,
       textReplacement,
       submitLabel,
+      hideFocusHint,
     } = resolveMessageInputProps(props);
     const mode = resolveComposerInputMode(inputMode);
     const { t } = useTranslation();
@@ -1217,6 +1239,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       textareaRef: webTextareaRef,
       minHeight: MIN_INPUT_HEIGHT,
       maxHeight: maxInputHeight,
+      placeholder,
     });
     const { style: composerHeightStyle, scrollEnabled: isComposerScrollEnabled } = composerHeight;
     const measuredComposerHeight = composerHeight.mode === "measured" ? composerHeight : undefined;
@@ -1819,7 +1842,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               onSelectionChange={handleSelectionChange}
               onPasteImages={onPasteImages}
               onPasteError={handlePasteError}
-              focusHintVisible={isWeb && !isInputFocused && !value}
+              focusHintVisible={resolveFocusHintVisible({ isInputFocused, value, hideFocusHint })}
               focusInputKeys={focusInputKeys}
               focusHintLabel={t("composer.input.focusHint", {
                 shortcut: focusInputKeys ? formatShortcut(focusInputKeys[0], getShortcutOs()) : "",

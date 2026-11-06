@@ -7,6 +7,7 @@ interface ComposerHeightArgs {
   textareaRef: RefObject<unknown>;
   minHeight: number;
   maxHeight: number;
+  placeholder?: string;
 }
 
 export function useComposerHeight({

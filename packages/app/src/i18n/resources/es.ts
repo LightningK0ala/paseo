@@ -121,6 +121,9 @@ export const es: TranslationResources = {
       fallback: "Mensaje...",
       terminal: "Prompt",
     },
+    replySuggestion: {
+      use: "Usar sugerencia",
+    },
     input: {
       accessibilityLabel: "Agente de mensajes...",
       terminalAccessibilityLabel: "Terminal prompt",
@@ -2146,6 +2149,9 @@ export const es: TranslationResources = {
       fallbackHint: "Si no está disponible, Paseo usa otro modelo disponible",
       docs: "Documentación",
       saveError: "No se pudo actualizar la generación de metadatos",
+      replySuggestions: "Respuestas sugeridas",
+      replySuggestionsHint:
+        "Cuando un agente termina, sugiere tu próximo mensaje probable en el editor",
     },
     general: {
       title: "General",

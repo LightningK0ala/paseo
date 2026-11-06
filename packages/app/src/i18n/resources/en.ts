@@ -116,6 +116,9 @@ export const en = {
       fallback: "Message...",
       terminal: "Prompt",
     },
+    replySuggestion: {
+      use: "Use suggestion",
+    },
     input: {
       accessibilityLabel: "Message agent...",
       terminalAccessibilityLabel: "Terminal prompt",
@@ -2223,6 +2226,9 @@ export const en = {
       fallbackHint: "If it is unavailable, Paseo falls back to another available model",
       docs: "Docs",
       saveError: "Unable to update metadata generation",
+      replySuggestions: "Suggested replies",
+      replySuggestionsHint:
+        "After an agent finishes, suggest your likely next message in the composer",
     },
     general: {
       title: "General",

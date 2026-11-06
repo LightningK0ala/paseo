@@ -153,9 +153,18 @@ const MutableStructuredGenerationProviderSchema = z
   })
   .passthrough();
 
+const MutableReplySuggestionsConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+  })
+  .passthrough();
+
 const MutableMetadataGenerationConfigSchema = z
   .object({
     providers: z.array(MutableStructuredGenerationProviderSchema).default([]),
+    // COMPAT(replySuggestions): added in v0.11.3; old daemons omit it. Gate on
+    // server_info.features.replySuggestions, remove the optional after 2027-05-06.
+    replySuggestions: MutableReplySuggestionsConfigSchema.optional(),
   })
   .passthrough();
 
@@ -1896,6 +1905,12 @@ export const SetAgentTimelineSubscriptionRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const AgentReplySuggestionGetRequestMessageSchema = z.object({
+  type: z.literal("agent.reply_suggestion.get.request"),
+  agentId: z.string(),
+  requestId: z.string(),
+});
+
 export const AgentForkContextRequestMessageSchema = z.object({
   type: z.literal("agent.fork_context.request"),
   agentId: z.string(),
@@ -3267,6 +3282,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderSubagentTimelineRequestMessageSchema,
   SetAgentTimelineSubscriptionRequestMessageSchema,
   AgentForkContextRequestMessageSchema,
+  AgentReplySuggestionGetRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
   SetAgentThinkingRequestMessageSchema,
@@ -3654,6 +3670,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentForkContext: z.boolean().optional(),
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
         agentForkContextCursor: z.boolean().optional(),
+        // COMPAT(replySuggestions): added in v0.11.3, remove gate after 2027-05-06.
+        replySuggestions: z.boolean().optional(),
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: z.boolean().optional(),
         // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove gates after 2027-03-14; retain wire field.
@@ -4793,6 +4811,21 @@ export const AgentAttentionRequiredMessageSchema = z.object({
         }),
       })
       .optional(),
+  }),
+});
+
+export const AgentReplySuggestionGetResponseMessageSchema = z.object({
+  type: z.literal("agent.reply_suggestion.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    // Identifies the finished turn the suggestion was made for. Null when the
+    // agent is not idle or has no finished turn.
+    turnKey: z.string().nullable(),
+    // Null when there is no obvious next message, the feature is off, or
+    // generation failed.
+    suggestion: z.string().nullable(),
+    error: z.string().nullable(),
   }),
 });
 
@@ -6897,6 +6930,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentTimelineSubscriptionResponseMessageSchema,
   AgentAttentionRequiredMessageSchema,
   AgentForkContextResponseMessageSchema,
+  AgentReplySuggestionGetResponseMessageSchema,
   CancelAgentResponseMessageSchema,
   ClearAgentAttentionResponseMessageSchema,
   WorkspaceCreateResponseSchema,
@@ -7226,6 +7260,12 @@ export type FetchWorkspacesRequestMessage = z.infer<typeof FetchWorkspacesReques
 export type ProjectListRequestMessage = z.infer<typeof ProjectListRequestMessageSchema>;
 export type FetchAgentRequestMessage = z.infer<typeof FetchAgentRequestMessageSchema>;
 export type AgentForkContextRequestMessage = z.infer<typeof AgentForkContextRequestMessageSchema>;
+export type AgentReplySuggestionGetRequestMessage = z.infer<
+  typeof AgentReplySuggestionGetRequestMessageSchema
+>;
+export type AgentReplySuggestionGetResponseMessage = z.infer<
+  typeof AgentReplySuggestionGetResponseMessageSchema
+>;
 export type SendAgentMessageRequest = z.infer<typeof SendAgentMessageRequestSchema>;
 export type WaitForFinishRequest = z.infer<typeof WaitForFinishRequestSchema>;
 export type DictationStreamStartMessage = z.infer<typeof DictationStreamStartMessageSchema>;

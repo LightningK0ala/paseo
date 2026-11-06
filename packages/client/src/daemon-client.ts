@@ -43,6 +43,7 @@ import type {
   FileWriteResult,
   FetchAgentTimelineResponseMessage,
   AgentForkContextResponseMessage,
+  AgentReplySuggestionGetResponseMessage,
   GitSetupOptions,
   CheckoutStatusResponse,
   CheckoutCommit,
@@ -649,6 +650,7 @@ type ScheduleUpdatePayload = Extract<
 >["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
+export type AgentReplySuggestionPayload = AgentReplySuggestionGetResponseMessage["payload"];
 
 export type FetchAgentTimelineDirection = FetchAgentTimelinePayload["direction"];
 export type FetchAgentTimelineProjection = FetchAgentTimelinePayload["projection"];
@@ -3435,6 +3437,27 @@ export class DaemonClient {
       throw new Error(payload.error);
     }
 
+    return payload;
+  }
+
+  /**
+   * The predicted next user message for an idle agent's last finished turn.
+   * The daemon generates it once per turn and caches it until it restarts.
+   */
+  async getAgentReplySuggestion(
+    agentId: string,
+    requestId?: string,
+  ): Promise<AgentReplySuggestionPayload> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "agent.reply_suggestion.get.request", agentId },
+      responseType: "agent.reply_suggestion.get.response",
+      // Generation spawns a small model run; allow it time to finish.
+      timeout: 90_000,
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
     return payload;
   }
 

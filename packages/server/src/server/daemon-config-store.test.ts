@@ -120,6 +120,32 @@ describe("DaemonConfigStore", () => {
     expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(true);
   });
 
+  test("reply suggestion toggle and preferred metadata model do not overwrite each other", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+    });
+
+    store.patch({ metadataGeneration: { providers: [{ provider: "claude", model: "haiku" }] } });
+    store.patch({ metadataGeneration: { replySuggestions: { enabled: false } } });
+    store.patch({ metadataGeneration: { providers: [{ provider: "codex" }] } });
+
+    const expected = {
+      providers: [{ provider: "codex" }],
+      replySuggestions: { enabled: false },
+    };
+    expect(store.get().metadataGeneration).toEqual(expected);
+    expect(loadPersistedConfig(paseoHome).agents?.metadataGeneration).toEqual(expected);
+  });
+
   test("patch round-trips agent profiles through the strictly-parsed persisted config", () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

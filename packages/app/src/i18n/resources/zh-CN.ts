@@ -120,6 +120,9 @@ export const zhCN: TranslationResources = {
       fallback: "输入消息...",
       terminal: "Prompt",
     },
+    replySuggestion: {
+      use: "使用建议",
+    },
     input: {
       accessibilityLabel: "给 Agent 发消息...",
       terminalAccessibilityLabel: "Terminal prompt",
@@ -2075,6 +2078,8 @@ export const zhCN: TranslationResources = {
       fallbackHint: "如果不可用，Paseo 会改用其他可用模型",
       docs: "文档",
       saveError: "无法更新元数据生成设置",
+      replySuggestions: "建议回复",
+      replySuggestionsHint: "智能体完成后，在输入框中建议你可能发送的下一条消息",
     },
     general: {
       title: "通用",

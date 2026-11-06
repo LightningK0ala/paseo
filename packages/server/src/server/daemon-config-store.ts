@@ -249,6 +249,20 @@ function compactOwnedPaths(paths: readonly string[], owners: readonly string[]):
   return Array.from(compacted).sort();
 }
 
+function pickMetadataGenerationPatch(
+  patch: MutableDaemonConfigPatch["metadataGeneration"],
+): Pick<SupportedMutableConfigPatch, "metadataGeneration"> {
+  const providers = patch?.providers;
+  const enabled = patch?.replySuggestions?.enabled;
+  if (providers === undefined && enabled === undefined) return {};
+  return {
+    metadataGeneration: {
+      ...(providers !== undefined ? { providers } : {}),
+      ...(enabled !== undefined ? { replySuggestions: { enabled } } : {}),
+    } as MutableDaemonConfig["metadataGeneration"],
+  };
+}
+
 function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMutableConfigPatch {
   return {
     ...(patch.relay?.enabled !== undefined ? { relay: { enabled: patch.relay.enabled } } : {}),
@@ -260,9 +274,7 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
       : {}),
     ...(patch.providers !== undefined ? { providers: patch.providers } : {}),
     ...(patch.removeProviders !== undefined ? { removeProviders: patch.removeProviders } : {}),
-    ...(patch.metadataGeneration?.providers !== undefined
-      ? { metadataGeneration: { providers: patch.metadataGeneration.providers } }
-      : {}),
+    ...pickMetadataGenerationPatch(patch.metadataGeneration),
     ...(patch.autoArchiveAfterMerge !== undefined
       ? { autoArchiveAfterMerge: patch.autoArchiveAfterMerge }
       : {}),
@@ -620,13 +632,24 @@ function mergeMutableAgentPatch(
   else delete next["providers"];
 
   if (patch.metadataGeneration?.providers !== undefined) {
-    next["metadataGeneration"] = { providers: patch.metadataGeneration.providers };
+    next["metadataGeneration"] = {
+      ...persistedAgents?.metadataGeneration,
+      providers: patch.metadataGeneration.providers,
+    };
   } else if (removeProviders.length > 0 && persistedAgents?.metadataGeneration?.providers) {
     const removed = new Set(removeProviders);
     next["metadataGeneration"] = {
+      ...persistedAgents.metadataGeneration,
       providers: persistedAgents.metadataGeneration.providers.filter(
         (entry) => !removed.has(entry.provider),
       ),
+    };
+  }
+  const replySuggestionsEnabled = patch.metadataGeneration?.replySuggestions?.enabled;
+  if (replySuggestionsEnabled !== undefined) {
+    next["metadataGeneration"] = {
+      ...(next["metadataGeneration"] as Record<string, unknown> | undefined),
+      replySuggestions: { enabled: replySuggestionsEnabled },
     };
   }
 

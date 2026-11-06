@@ -121,6 +121,9 @@ export const ru: TranslationResources = {
       fallback: "Сообщение...",
       terminal: "Prompt",
     },
+    replySuggestion: {
+      use: "Использовать подсказку",
+    },
     input: {
       accessibilityLabel: "Написать агенту...",
       terminalAccessibilityLabel: "Terminal prompt",
@@ -2131,6 +2134,9 @@ export const ru: TranslationResources = {
       fallbackHint: "Если она недоступна, Paseo использует другую доступную модель",
       docs: "Документация",
       saveError: "Не удалось обновить настройки генерации метаданных",
+      replySuggestions: "Предлагаемые ответы",
+      replySuggestionsHint:
+        "Когда агент закончит, предлагать в поле ввода ваше вероятное следующее сообщение",
     },
     general: {
       title: "Основные",

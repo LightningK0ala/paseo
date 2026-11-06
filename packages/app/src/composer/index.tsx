@@ -85,6 +85,8 @@ import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
+import { shouldAcceptReplySuggestionOnKey } from "./reply-suggestion";
+import { ReplySuggestionButton } from "./reply-suggestion-button";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
@@ -966,6 +968,16 @@ interface ComposerProps {
   submitLabel?: string;
   /** Overrides the mode's default placeholder, for text only the caller can build. */
   placeholder?: string;
+  /**
+   * The predicted next message, shown as the placeholder while the input is
+   * empty. Tab or the accept button hands it to `onAccept`; it is never sent.
+   */
+  replySuggestion?: ComposerReplySuggestion | null;
+}
+
+export interface ComposerReplySuggestion {
+  text: string;
+  onAccept: () => void;
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
@@ -1234,6 +1246,7 @@ function ComposerContentImpl({
   readOnly = false,
   submitLabel,
   placeholder,
+  replySuggestion = null,
 }: ComposerContentProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
@@ -1269,11 +1282,22 @@ function ComposerContentImpl({
   const isDesktopWebBreakpoint = resolveIsDesktopWebBreakpoint(isCompactFormFactor);
   const hasFinePointer = useHasFinePointer();
   const isDesktopLayout = resolveIsDesktopWebBreakpoint(isCompactLayout);
-  const messagePlaceholder = resolveMessagePlaceholder(inputMode, isDesktopLayout, t, placeholder);
+  const messagePlaceholder = resolveMessagePlaceholder(
+    inputMode,
+    isDesktopLayout,
+    t,
+    replySuggestion?.text ?? placeholder,
+  );
   const hasText = useSyncExternalStore(
     textSource.subscribe,
     () => textSource.getSnapshot().trim().length > 0,
     () => textSource.getSnapshot().trim().length > 0,
+  );
+  // Any typed character, even a space, hides the suggestion like a placeholder.
+  const isTextEmpty = useSyncExternalStore(
+    textSource.subscribe,
+    () => textSource.getSnapshot().length === 0,
+    () => textSource.getSnapshot().length === 0,
   );
   const setUserInput = onChangeText;
   const workspaceAttachments = useWorkspaceAttachmentsForScopes(attachmentScopeKeys);
@@ -1949,10 +1973,18 @@ function ComposerContentImpl({
   const hasSendableContent = hasText || selectedAttachments.length > 0;
 
   // Handle keyboard navigation for command autocomplete.
-  const handleCommandKeyPress = useCallback(
-    (event: ComposerKeyPressEvent) => autocompleteRef.current?.onKeyPress(event) ?? false,
-    [],
-  );
+  const replySuggestionRef = useRef(replySuggestion);
+  replySuggestionRef.current = replySuggestion;
+  const handleCommandKeyPress = useCallback((event: ComposerKeyPressEvent) => {
+    if (autocompleteRef.current?.onKeyPress(event)) return true;
+    const suggestion = replySuggestionRef.current;
+    if (!shouldAcceptReplySuggestionOnKey(event, event.input.text, suggestion?.text ?? null)) {
+      return false;
+    }
+    event.preventDefault();
+    suggestion?.onAccept();
+    return true;
+  }, []);
 
   const cancelButtonStyle = useMemo(
     () => buildCancelButtonStyle(isConnected, isCancellingAgent),
@@ -2026,21 +2058,39 @@ function ComposerContentImpl({
   );
 
   const contextWindowMeterGlyphSize = isCompactLayout ? ICON_SIZE.md : buttonIconSize;
+  const showReplySuggestionButton = replySuggestion !== null && isTextEmpty;
+  const acceptReplySuggestionText = replySuggestion?.onAccept;
+  const acceptReplySuggestion = useMemo(() => {
+    if (!acceptReplySuggestionText) return undefined;
+    return () => {
+      acceptReplySuggestionText();
+      // Leave the user in the input, ready to edit or send.
+      if (isNative) messageInputRef.current?.focus();
+      else focusInput();
+    };
+  }, [acceptReplySuggestionText, focusInput]);
   const beforeVoiceContent = useMemo(
     () =>
       hasAgent ? (
-        <View style={styles.contextWindowMeterSlot}>
-          <ContextWindowMeter
-            serverId={serverId}
-            agentId={agentId}
-            maxTokens={agentState.contextWindowMaxTokens}
-            usedTokens={agentState.contextWindowUsedTokens}
-            totalCostUsd={agentState.totalCostUsd}
-            glyphSize={contextWindowMeterGlyphSize}
-          />
-        </View>
+        <>
+          {showReplySuggestionButton && acceptReplySuggestion ? (
+            <ReplySuggestionButton onAccept={acceptReplySuggestion} />
+          ) : null}
+          <View style={styles.contextWindowMeterSlot}>
+            <ContextWindowMeter
+              serverId={serverId}
+              agentId={agentId}
+              maxTokens={agentState.contextWindowMaxTokens}
+              usedTokens={agentState.contextWindowUsedTokens}
+              totalCostUsd={agentState.totalCostUsd}
+              glyphSize={contextWindowMeterGlyphSize}
+            />
+          </View>
+        </>
       ) : null,
     [
+      acceptReplySuggestion,
+      showReplySuggestionButton,
       hasAgent,
       serverId,
       agentId,
@@ -2430,6 +2480,7 @@ function ComposerContentImpl({
                   readOnly={readOnly}
                   textReplacement={textReplacement}
                   submitLabel={submitLabel}
+                  hideFocusHint={replySuggestion !== null}
                 />
               </RenderProfile>
               <Combobox

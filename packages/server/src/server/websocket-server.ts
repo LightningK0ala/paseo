@@ -9,6 +9,11 @@ import { getHostName } from "./host-name.js";
 import { randomUUID } from "node:crypto";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { AgentManager, AgentMetricsSnapshot } from "./agent/agent-manager.js";
+import {
+  DEFAULT_REPLY_SUGGESTIONS_ENABLED,
+  ReplySuggestionService,
+  createReplySuggestionGenerator,
+} from "./agent/reply-suggestions.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
@@ -593,6 +598,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly directorySync = new DirectorySyncService();
   private readonly pluginRuntime: SessionOptions["pluginRuntime"];
   private readonly orchestrationSkills: SessionOptions["orchestrationSkills"];
+  private readonly replySuggestions: ReplySuggestionService;
 
   private async validateCompletedCreation(snapshot: CreationSnapshot): Promise<void> {
     if (snapshot.workspace && snapshot.kind === "workspace") {
@@ -720,6 +726,21 @@ export class VoiceAssistantWebSocketServer {
       throw new Error("providerSnapshotManager is required");
     }
     this.providerSnapshotManager = providerSnapshotManager;
+    this.replySuggestions = new ReplySuggestionService({
+      agentManager: this.agentManager,
+      isEnabled: () =>
+        this.daemonConfigStore.get().metadataGeneration.replySuggestions?.enabled ??
+        DEFAULT_REPLY_SUGGESTIONS_ENABLED,
+      generate: createReplySuggestionGenerator({
+        agentManager: this.agentManager,
+        providerSnapshotManager: this.providerSnapshotManager,
+        readDaemonConfig: () => ({
+          metadataGeneration: this.daemonConfigStore.get().metadataGeneration,
+        }),
+        logger: this.logger,
+      }),
+      logger: this.logger,
+    });
     this.serverCapabilities = buildServerCapabilities({
       readiness: this.speech?.getReadiness() ?? null,
     });
@@ -1493,6 +1514,7 @@ export class VoiceAssistantWebSocketServer {
       daemonConfigStore: this.daemonConfigStore,
       pluginRuntime: this.pluginRuntime,
       orchestrationSkills: this.orchestrationSkills,
+      replySuggestions: this.replySuggestions,
       mcpBaseUrl: this.mcpBaseUrl,
       stt: () => this.speech?.resolveStt() ?? null,
       sttLanguage: this.speech?.resolveSttLanguage() ?? "en",
@@ -1887,6 +1909,8 @@ export class VoiceAssistantWebSocketServer {
         agentForkContext: true,
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
         agentForkContextCursor: true,
+        // COMPAT(replySuggestions): added in v0.11.3, remove gate after 2027-05-06.
+        replySuggestions: true,
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: true,
         // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove gates after 2027-03-14; retain advertisement.
