@@ -102,6 +102,9 @@ import {
 import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { isWeb, isNative } from "@/constants/platform";
+import { useToast } from "@/contexts/toast-api-context";
+import { i18n } from "@/i18n/i18next";
+import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import type { AgentCapabilityFlags } from "@getpaseo/protocol/agent-types";
 import { RewindMenu, type RewindMode } from "@/components/rewind/rewind-menu";
 import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mutation";
@@ -1420,6 +1423,7 @@ interface MarkdownInheritedTextProps {
   style?: StyleProp<TextStyle>;
   monoSurface?: boolean;
   copyTag?: MarkdownCopyInlineTag;
+  onPress?: () => void;
   children: ReactNode;
 }
 
@@ -1429,6 +1433,7 @@ function MarkdownInheritedText({
   style: overrideStyle,
   monoSurface,
   copyTag,
+  onPress,
   children,
 }: MarkdownInheritedTextProps) {
   const style = useMemo(
@@ -1446,12 +1451,58 @@ function MarkdownInheritedText({
       monoSurface={monoSurface}
       copyTag={copyTag}
       style={style}
-      onPress={linkPress?.onPress}
+      onPress={onPress ?? linkPress?.onPress}
       accessibilityRole={linkPress?.accessibilityRole}
     >
       {children}
     </MarkdownTextSpan>
   );
+}
+
+interface CopyableInlineCodeProps {
+  content: string;
+  inheritedStyles: TextStyle;
+  textStyle: TextStyle;
+}
+
+const COPYABLE_INLINE_CODE_STYLE: TextStyle = isWeb ? ({ cursor: "copy" } as TextStyle) : {};
+
+/**
+ * Inline code (a command, an ID, a branch name) copies on tap or click, with a
+ * "Copied" toast. A click that ends a drag or double-click selection leaves the
+ * selection alone, so selecting part of the code still works.
+ */
+function CopyableInlineCode({ content, inheritedStyles, textStyle }: CopyableInlineCodeProps) {
+  const toast = useToast();
+  const handlePress = useCallback(() => {
+    if (!content || hasExpandedWebSelection()) {
+      return;
+    }
+    void copyToClipboard(content)
+      .then(() => toast.copied())
+      .catch(() => toast.error(i18n.t("common.errors.unableToCopy")));
+  }, [content, toast]);
+
+  return (
+    <MarkdownInheritedText
+      copyTag="code"
+      inheritedStyles={inheritedStyles}
+      textStyle={textStyle}
+      style={COPYABLE_INLINE_CODE_STYLE}
+      monoSurface
+      onPress={handlePress}
+    >
+      {content}
+    </MarkdownInheritedText>
+  );
+}
+
+function hasExpandedWebSelection(): boolean {
+  if (!isWeb) {
+    return false;
+  }
+  const selection = window.getSelection();
+  return Boolean(selection && !selection.isCollapsed);
 }
 
 interface MarkdownListItemContentProps {
@@ -1819,16 +1870,27 @@ export const AssistantMessage = memo(function AssistantMessage({
           );
         }
 
+        if (isLinkedInlineCode) {
+          return (
+            <MarkdownInheritedText
+              key={node.key}
+              copyTag="code"
+              inheritedStyles={inheritedStyles}
+              textStyle={styles.code_inline}
+              monoSurface
+            >
+              {content}
+            </MarkdownInheritedText>
+          );
+        }
+
         return (
-          <MarkdownInheritedText
+          <CopyableInlineCode
             key={node.key}
-            copyTag="code"
+            content={content}
             inheritedStyles={inheritedStyles}
             textStyle={styles.code_inline}
-            monoSurface
-          >
-            {content}
-          </MarkdownInheritedText>
+          />
         );
       },
       bullet_list: (

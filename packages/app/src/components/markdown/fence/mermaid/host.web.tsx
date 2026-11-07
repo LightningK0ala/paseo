@@ -176,9 +176,10 @@ const measuringStyle: ViewStyle = {
   pointerEvents: "none",
 };
 const controlStyles = StyleSheet.create((theme) => ({
+  // Bottom corner: the code block's header holds its Copy button in the top corner.
   sourceButton: {
     position: "absolute",
-    top: theme.spacing[2],
+    bottom: theme.spacing[2],
     right: theme.spacing[2],
     padding: theme.spacing[1],
   },

@@ -68,6 +68,9 @@ export function createAssistantSelectionClipboardContent(
   }
 
   const range = startAfterImageFrame(selection.getRangeAt(0));
+  if (isInsideIgnoredChrome(range)) {
+    return null;
+  }
   const parts = selectedMessageParts(range)?.filter((part) => selectsContent(part.range));
   if (!parts?.length) {
     return null;
@@ -92,6 +95,20 @@ export function createAssistantSelectionClipboardContent(
   }
   const content = createMarkdownClipboardContent(markdown);
   return { ...content, html: flattenClipboardListMarkup(content.html) };
+}
+
+/**
+ * A selection that lies entirely inside UI chrome, such as a code block's header with
+ * its language and Copy button, is not Markdown. Cloning a single text node drops the
+ * ignore marker with the element that carried it, so this has to be asked of the live
+ * DOM.
+ */
+function isInsideIgnoredChrome(range: Range): boolean {
+  const ancestor =
+    range.commonAncestorContainer instanceof Element
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+  return Boolean(ancestor?.closest(`[${MARKDOWN_COPY_IGNORE_ATTRIBUTE}]`));
 }
 
 /**
@@ -326,6 +343,14 @@ function shouldPreserveSemanticElement(range: Range, element: Element): boolean 
   // An image has no part to select, so touching it selects all of it.
   if (tag === "p" || tag === "img" || isTableStructure(tag)) {
     return true;
+  }
+  // A selection that crosses into a code block keeps the selected lines as fenced code.
+  // Demoted to a paragraph, they would lose their line breaks and indentation and pick
+  // up Markdown escapes. A selection inside the block never reaches here: it copies as
+  // bare code (`createPartialCodeContent`).
+  const codeBlock = tag === "pre" || tag === "code" ? element.closest(CODE_BLOCK_SELECTOR) : null;
+  if (codeBlock) {
+    return !selectionStaysInsideElement(range, codeBlock);
   }
   const isSelectableSemantic = tag !== null && tag !== "li" && tag !== "ol" && tag !== "ul";
   if (

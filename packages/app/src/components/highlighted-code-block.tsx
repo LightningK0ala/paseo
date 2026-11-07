@@ -1,15 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { MarkdownTextSpan } from "@/components/markdown-text";
 import * as Clipboard from "expo-clipboard";
 import { Check, Copy } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import type { HighlightToken } from "@getpaseo/highlight";
-import { isNative, isWeb } from "@/constants/platform";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { ICON_SIZE } from "@/styles/theme";
 import { highlightToKeyedLines, type KeyedLine } from "@/utils/highlight-cache";
 import {
   markdownCopyCodeBlockDataSet,
@@ -61,8 +68,8 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
   textStyle,
 }: HighlightedCodeBlockProps) {
   // Box styles (bg / padding / border / radius / margin) go on the wrapper View
-  // so the absolute copy button positions relative to the visible code area,
-  // not to a parent that includes the Text's own marginVertical.
+  // so the header row sits inside the visible code area, not inside a parent
+  // that includes the Text's own marginVertical.
   const { containerStyle, innerTextStyle } = useMemo(
     () => splitFenceStyle(inheritedStyles, textStyle),
     [inheritedStyles, textStyle],
@@ -72,29 +79,21 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
     () => ({ ...CODE_SURFACE_DATASET, ...markdownCopyCodeBlockDataSet(language) }),
     [language],
   );
+  const languageLabel = useMemo(() => fenceLanguageLabel(language), [language]);
 
   const keyedLines = useMemo<KeyedLine[] | null>(
     () => highlightToKeyedLines(renderedCode, fenceLanguageToExtension(language)),
     [renderedCode, language],
   );
 
-  const isCompact = useIsCompactFormFactor();
-  const [isHovered, setIsHovered] = useState(false);
-  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
-  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
-  const controlsVisible = isHovered || isNative || isCompact;
   // Copy the code without its trailing blank lines. A fence body ends in a newline,
   // and ends in more than one when the author left a blank line before the closing
   // fence; pasting any of them into a terminal runs the last line.
   const getCode = useCallback(() => code.replace(TRAILING_CODE_LINE_BREAKS, ""), [code]);
 
   return (
-    <View
-      style={containerStyle}
-      dataSet={copyDataSet}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
-    >
+    <View style={containerStyle} dataSet={copyDataSet}>
+      <CodeBlockHeader languageLabel={languageLabel} getCode={getCode} />
       {keyedLines ? (
         <MarkdownTextSpan style={innerTextStyle} copyTag="code">
           {renderCodeSegments(keyedLines)}
@@ -104,10 +103,14 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
           {renderedCode}
         </MarkdownTextSpan>
       )}
-      <CopyButton getCode={getCode} visible={controlsVisible} />
     </View>
   );
 });
+
+/** The fence info string's first word, as the author wrote it ("ts", "bash"). */
+function fenceLanguageLabel(info: string | null | undefined): string | null {
+  return info?.trim().split(/\s+/)[0] || null;
+}
 
 function renderCodeSegments(keyedLines: KeyedLine[]): React.ReactNode[] {
   const segments: React.ReactNode[] = [];
@@ -148,7 +151,6 @@ interface SplitStyles {
   innerTextStyle: StyleProp<TextStyle>;
 }
 
-const CONTAINER_BASE: ViewStyle = { position: "relative" };
 const WEB_SELECTABLE: TextStyle = isWeb ? ({ userSelect: "text" } as TextStyle) : {};
 
 function splitFenceStyle(inheritedStyles: TextStyle, textStyle: TextStyle): SplitStyles {
@@ -159,19 +161,46 @@ function splitFenceStyle(inheritedStyles: TextStyle, textStyle: TextStyle): Spli
   if (fontSize !== undefined) textOnly.lineHeight = Math.round(fontSize * 1.45);
   if (color !== undefined) textOnly.color = color;
   return {
-    containerStyle: [box as ViewStyle, CONTAINER_BASE],
+    containerStyle: box as ViewStyle,
     innerTextStyle: [inheritedStyles, textOnly],
   };
 }
 
+interface CodeBlockHeaderProps {
+  languageLabel: string | null;
+  getCode: () => string;
+}
+
+/**
+ * Always visible, so the copy action is reachable on touch screens of any width, and
+ * outside the code so it never covers the first line. The whole row is marked ignored:
+ * a selection that runs through it copies neither the language nor the button label.
+ */
+const CodeBlockHeader = React.memo(function CodeBlockHeader({
+  languageLabel,
+  getCode,
+}: CodeBlockHeaderProps) {
+  return (
+    <View
+      style={codeBlockHeaderStyles.row}
+      dataSet={markdownCopyDataSet.ignore}
+      testID="code-block-header"
+    >
+      <Text style={codeBlockHeaderStyles.language} numberOfLines={1} selectable={false}>
+        {languageLabel ?? ""}
+      </Text>
+      <CopyButton getCode={getCode} />
+    </View>
+  );
+});
+
 interface CopyButtonProps {
   getCode: () => string;
-  visible: boolean;
 }
 
 const COPIED_RESET_MS = 1500;
 
-const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButtonProps) {
+const CopyButton = React.memo(function CopyButton({ getCode }: CopyButtonProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -195,55 +224,84 @@ const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButt
     }, COPIED_RESET_MS);
   }, [getCode]);
 
-  const visibilityStyle = visible
-    ? copyButtonStyles.containerVisible
-    : copyButtonStyles.containerHidden;
-  const wrapperStyle = useMemo(
-    () => [copyButtonStyles.container, visibilityStyle],
-    [visibilityStyle],
-  );
-
   return (
     <Pressable
       onPress={handlePress}
-      style={wrapperStyle}
-      pointerEvents={visible ? "auto" : "none"}
+      style={codeBlockHeaderStyles.button}
       accessibilityRole="button"
       accessibilityLabel={copied ? t("message.actions.copied") : t("message.actions.copyCode")}
-      hitSlop={8}
-      dataSet={markdownCopyDataSet.ignore}
     >
       {({ hovered }) => {
-        const iconColor = hovered
-          ? copyButtonStyles.iconHoveredColor.color
-          : copyButtonStyles.iconColor.color;
-        return copied ? (
-          <Check size={14} color={iconColor} />
-        ) : (
-          <Copy size={14} color={iconColor} />
+        const color = hovered
+          ? codeBlockHeaderStyles.foregroundHovered.color
+          : codeBlockHeaderStyles.foregroundIdle.color;
+        const labelStyle = hovered
+          ? codeBlockHeaderStyles.buttonLabelHovered
+          : codeBlockHeaderStyles.buttonLabel;
+        return (
+          <>
+            {copied ? (
+              <Check size={ICON_SIZE.xs} color={color} />
+            ) : (
+              <Copy size={ICON_SIZE.xs} color={color} />
+            )}
+            <Text style={labelStyle} selectable={false}>
+              {copied ? t("message.actions.copied") : t("common.actions.copy")}
+            </Text>
+          </>
         );
       }}
     </Pressable>
   );
 });
 
-const copyButtonStyles = StyleSheet.create((theme) => ({
-  container: {
-    position: "absolute",
-    top: theme.spacing[2],
-    right: theme.spacing[2],
-    padding: theme.spacing[1],
+const codeBlockHeaderStyles = StyleSheet.create((theme) => ({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+    marginBottom: theme.spacing[1],
+    userSelect: "none",
+    // Above the code, which is painted later: the Copy button's touch target reaches
+    // past the row into the first line.
+    zIndex: 1,
   },
-  containerVisible: {
-    opacity: 1,
+  language: {
+    flexShrink: 1,
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.sm,
+    userSelect: "none",
   },
-  containerHidden: {
-    opacity: 0,
+  // A 44pt touch target around a 14px-tall label. The negative margins give the extra
+  // padding back, so the header keeps the label's height and the glyphs stay on the
+  // code's right rail. Padding rather than hitSlop: react-native-web ignores hitSlop.
+  button: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    minWidth: 44,
+    paddingVertical: 15,
+    marginVertical: -13,
+    paddingHorizontal: theme.spacing[2],
+    marginRight: -theme.spacing[2],
+    borderRadius: theme.borderRadius.sm,
   },
-  iconColor: {
+  buttonLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    userSelect: "none",
+  },
+  buttonLabelHovered: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    userSelect: "none",
+  },
+  foregroundIdle: {
     color: theme.colors.foregroundMuted,
   },
-  iconHoveredColor: {
+  foregroundHovered: {
     color: theme.colors.foreground,
   },
 }));

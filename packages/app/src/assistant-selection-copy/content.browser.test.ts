@@ -486,9 +486,10 @@ describe("assistant selection copy ranges", () => {
 /**
  * The fixture above holds a code block in one text node. The real renderer splits a
  * highlighted line across one text node per syntax token and emits each newline as a
- * node of its own (`highlighted-code-block.tsx`), and it puts the hover Copy button
- * inside the `pre`. Line breaks and indentation only survive if the code skips
- * Turndown, so those cases need a fixture shaped like the real thing.
+ * node of its own (`highlighted-code-block.tsx`), and it puts a header row holding the
+ * language and a Copy button inside the `pre`, ahead of the code. Line breaks and
+ * indentation only survive if the code skips Turndown, so those cases need a fixture
+ * shaped like the real thing.
  */
 function highlightedFixture(language: string | null): string {
   return [
@@ -505,6 +506,10 @@ function highlightedCodeBlock(language: string | null): string {
     language === null ? "" : ` data-paseo-markdown-language="${escapeAttribute(language)}"`;
   return [
     `<div data-paseo-markdown-tag="pre"${languageAttribute}>`,
+    '<div data-paseo-markdown-ignore="true">',
+    `<div>${language === null ? "" : escapeText(language)}</div>`,
+    "<div><span>Copy</span></div>",
+    "</div>",
     '<span data-paseo-markdown-tag="code">',
     "<span>const</span><span> answer</span><span> = 1;</span>",
     "<span>\n</span>",
@@ -512,9 +517,14 @@ function highlightedCodeBlock(language: string | null): string {
     "<span>\n</span>",
     "<span>    doThing();</span>",
     "</span>",
-    '<div data-paseo-markdown-ignore="true"><span>Copy</span></div>',
     "</div>",
   ].join("");
+}
+
+function escapeText(value: string): string {
+  const holder = document.createElement("div");
+  holder.textContent = value;
+  return holder.innerHTML;
 }
 
 function escapeAttribute(value: string): string {
@@ -645,13 +655,22 @@ describe("assistant selection copy inside highlighted code", () => {
     expect(content?.plainText).toBe("const answer = 1;\n  if");
   });
 
-  it("leaves the hover copy button out of the copied code", () => {
+  it("leaves the header's language and Copy label out of the copied code", () => {
     const message = mountHighlighted();
 
-    const content = copyAcross(message, " answer", "Copy");
+    const content = copyAcross(message, "typescript", " {");
 
-    expect(content?.plainText).toBe(" answer = 1;\n  if (answer) {\n    doThing();");
-    expect(content?.plainText).not.toContain("Copy");
+    expect(content?.plainText).toBe("const answer = 1;\n  if (answer) {");
+  });
+
+  it("leaves the header out when a selection crosses into the block from above", () => {
+    const message = mountHighlighted();
+
+    const content = copyAcross(message, "Before the block.", "    doThing();");
+
+    expect(content?.plainText).toBe(
+      "Before the block.\n\n```typescript\nconst answer = 1;\n  if (answer) {\n    doThing();\n```",
+    );
   });
 
   it("does not treat a selection inside the copy button as code", () => {
@@ -747,6 +766,29 @@ describe("assistant selection copy inside highlighted code", () => {
 
     expect(content?.plainText).toBe(
       "![chart](https://example.test/chart.png)\n\n```typescript\nconst answer = 1;\n  if (answer) {\n    doThing();\n```",
+    );
+  });
+
+  it("keeps the selected lines fenced when a selection ends partway into a code block", () => {
+    const message = mountHighlighted();
+
+    const content = copyAcross(message, "Before the block.", " {");
+
+    expect(content?.plainText).toBe(
+      "Before the block.\n\n```typescript\nconst answer = 1;\n  if (answer) {\n```",
+    );
+    expect(content?.html).toContain(
+      '<pre><code class="language-typescript">const answer = 1;\n  if (answer) {\n</code></pre>',
+    );
+  });
+
+  it("keeps the selected lines fenced when a selection starts partway into a code block", () => {
+    const message = mountHighlighted();
+
+    const content = copyAcross(message, "  if", "After the block.");
+
+    expect(content?.plainText).toBe(
+      "```typescript\n  if (answer) {\n    doThing();\n```\n\nAfter the block.",
     );
   });
 
