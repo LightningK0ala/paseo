@@ -1465,7 +1465,9 @@ interface CopyableInlineCodeProps {
   textStyle: TextStyle;
 }
 
-const COPYABLE_INLINE_CODE_STYLE: TextStyle = isWeb ? ({ cursor: "copy" } as TextStyle) : {};
+// React Native's TextStyle only types "auto" | "pointer" for cursor; react-native-web
+// passes any CSS cursor through, so the web-only value is typed as a plain object.
+const COPYABLE_INLINE_CODE_STYLE = isWeb ? ({ cursor: "copy" } as object) : null;
 
 /**
  * Inline code (a command, an ID, a branch name) copies on tap or click, with a
