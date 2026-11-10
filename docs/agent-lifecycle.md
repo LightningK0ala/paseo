@@ -78,6 +78,19 @@ Permission requests are notification checkpoints, not the end of that subscripti
 The permission notification includes the normalized request plus the child and request IDs, so the caller can inspect it and respond without fetching agent status.
 A watched child that closes before its finish event also notifies the caller so delegated work cannot disappear silently during archive or workspace teardown.
 
+### MCP discovery
+
+Breaking default change: `list_agents`, `list_pending_permissions`, and `whats_waiting`
+now return only top-level agents. Pass `includeSubagents: true` to include agents
+carrying `paseo.parent-agent-id`, at any depth. Lists, counts, summaries, and overflow
+counts use the same population; limits apply after filtering. App and CLI listings
+are unchanged.
+
+To find your own children, call `list_agents` with `includeSubagents: true` and select
+entries whose `labels["paseo.parent-agent-id"]` equals your agent ID. The existing
+`cwd` filter still applies; set it explicitly for children in another directory.
+Tools that take an explicit agent ID or reference still reach subagents.
+
 ## Provider-managed child agents
 
 Some providers can create their own child sessions inside one provider runtime. OMP's task tool reports these with `child_session` events; `AgentManager` imports the live provider handle, stamps `paseo.parent-agent-id`, and surfaces the result as a normal subagent in the parent's subagents track.

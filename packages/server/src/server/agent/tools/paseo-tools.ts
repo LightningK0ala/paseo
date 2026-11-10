@@ -6,6 +6,7 @@ import type { Logger } from "pino";
 import type { AgentMode, AgentProvider, AgentSessionConfig } from "../agent-sdk-types.js";
 import type { AgentManager } from "../agent-manager.js";
 import { AgentProfileSchema } from "@getpaseo/protocol/messages";
+import { isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
 import type { DaemonConfigStore } from "../../daemon-config-store.js";
 import {
   AgentFeatureSchema,
@@ -2060,9 +2061,22 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     "list_agents",
     {
       title: "List agents",
-      description: "List recent agents as compact metadata.",
+      description: [
+        "List recent agents as compact metadata.",
+        "Returns top-level agents only. Sub-agents (agents created by another agent; they carry the",
+        "paseo.parent-agent-id label, at any depth) are left out unless includeSubagents is true.",
+        "To see the agents you created yourself, pass includeSubagents: true and keep the entries whose",
+        'labels["paseo.parent-agent-id"] is your own agent id.',
+      ].join(" "),
       inputSchema: {
         includeArchived: z.boolean().optional().default(false),
+        includeSubagents: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            "Also list sub-agents (agents with the paseo.parent-agent-id label). Default false: top-level agents only. cwd still applies, so set it too when your sub-agents run in another directory.",
+          ),
         cwd: z.string().optional(),
         sinceHours: z
           .number()
@@ -2078,7 +2092,14 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         agents: z.array(AgentListItemPayloadSchema),
       },
     },
-    async ({ includeArchived = false, cwd, sinceHours = 48, statuses, limit = 50 }) => {
+    async ({
+      includeArchived = false,
+      includeSubagents = false,
+      cwd,
+      sinceHours = 48,
+      statuses,
+      limit = 50,
+    }) => {
       const callerCwd = callerAgentId ? resolveCallerAgent()?.cwd : undefined;
       const requestedCwd = cwd?.trim() ? expandUserPath(cwd) : callerCwd;
       const statusFilter = statuses && statuses.length > 0 ? new Set(statuses) : null;
@@ -2105,6 +2126,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         // Stored records are pre-filtered above; this also excludes archived agents
         // that are still loaded in memory.
         .filter((agent) => includeArchived || !agent.archivedAt)
+        .filter((agent) => includeSubagents || !isDelegatedAgent(agent))
         .filter((agent) => !requestedCwd || isSameOrDescendantPath(requestedCwd, agent.cwd))
         .filter((agent) => !statusFilter || statusFilter.has(agent.status))
         .filter((agent) => !agent.archivedAt || resolveAgentListActivityTime(agent) >= sinceMs)
@@ -3153,9 +3175,20 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     "list_pending_permissions",
     {
       title: "List pending permissions",
-      description:
-        "Return all pending permission requests across all agents with the normalized payloads.",
-      inputSchema: {},
+      description: [
+        "Return the pending permission requests of top-level agents with the normalized payloads.",
+        "Requests from sub-agents (agents with the paseo.parent-agent-id label) are left out unless",
+        "includeSubagents is true. respond_to_permission works for any agent either way.",
+      ].join(" "),
+      inputSchema: {
+        includeSubagents: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            "Also return requests from sub-agents (agents with the paseo.parent-agent-id label). Default false: top-level agents only.",
+          ),
+      },
       outputSchema: {
         permissions: z.array(
           z.object({
@@ -3166,15 +3199,18 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         ),
       },
     },
-    async () => {
-      const permissions = agentManager.listAgents().flatMap((agent) => {
-        const payload = toAgentPayload(agent);
-        return payload.pendingPermissions.map((request) => ({
-          agentId: agent.id,
-          status: payload.status,
-          request: sanitizePermissionRequest(request),
-        }));
-      });
+    async ({ includeSubagents = false }) => {
+      const permissions = agentManager
+        .listAgents()
+        .filter((agent) => includeSubagents || !isDelegatedAgent(agent))
+        .flatMap((agent) => {
+          const payload = toAgentPayload(agent);
+          return payload.pendingPermissions.map((request) => ({
+            agentId: agent.id,
+            status: payload.status,
+            request: sanitizePermissionRequest(request),
+          }));
+        });
 
       return {
         content: [],

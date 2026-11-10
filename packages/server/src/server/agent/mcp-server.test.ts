@@ -234,6 +234,7 @@ function buildAgentManagerSpies() {
     getAgent: vi.fn(),
     listAgents: vi.fn().mockReturnValue([]),
     getTimeline: vi.fn().mockReturnValue([]),
+    getLastAssistantMessage: vi.fn().mockResolvedValue(null),
     resumeAgentFromPersistence: vi.fn(),
     hydrateTimelineFromProvider: vi.fn().mockResolvedValue(undefined),
     appendTimelineItem: vi.fn().mockResolvedValue(undefined),
@@ -5640,6 +5641,155 @@ describe("speak MCP tool", () => {
     });
     const tool = lookupTool(server, "speak");
     expect(tool).toBeUndefined();
+  });
+});
+
+describe("MCP top-level agent defaults", () => {
+  async function fixture() {
+    const deps = createTestDeps();
+    const root = createManagedAgent({ id: "root", lifecycle: "running" });
+    const child = createManagedAgent({
+      id: "child",
+      lifecycle: "running",
+      labels: { [PARENT_AGENT_ID_LABEL]: "root" },
+    });
+    const nested = createManagedAgent({
+      id: "nested",
+      labels: { [PARENT_AGENT_ID_LABEL]: "child" },
+      pendingPermissions: new Map([
+        [
+          "permission-nested",
+          {
+            id: "permission-nested",
+            provider: "claude",
+            name: "shell",
+            kind: "tool",
+            title: "Run command",
+            input: { command: "npm test" },
+          },
+        ],
+      ]),
+      attention: {
+        requiresAttention: true,
+        attentionReason: "permission",
+        attentionTimestamp: new Date(),
+      },
+    });
+    deps.spies.agentManager.listAgents.mockReturnValue([nested, child, root]);
+    deps.spies.agentManager.getAgent.mockImplementation((id) =>
+      [root, child, nested].find((agent) => agent.id === id),
+    );
+    const now = Date.now();
+    const finished = (id: string, parent?: string, age = 0) =>
+      createStoredRecord({
+        id,
+        archivedAt: null,
+        labels: parent ? { [PARENT_AGENT_ID_LABEL]: parent } : {},
+        requiresAttention: true,
+        attentionReason: "finished",
+        attentionTimestamp: new Date(now - age).toISOString(),
+      });
+    deps.spies.agentStorage.list.mockResolvedValue([
+      ...Array.from({ length: 6 }, (_, i) => finished(`finished-child-${i}`, "child")),
+      finished("finished-root", undefined, 60_000),
+      finished("old-child", "root", 72 * 60 * 60 * 1000),
+    ]);
+    const server = await createAgentMcpServer({
+      ...deps,
+      logger: createTestLogger(),
+      providerSnapshotManager: createClaudeOnlyManager(),
+    });
+    return server;
+  }
+
+  it("filters live and stored descendants before applying the list limit", async () => {
+    const server = await fixture();
+    const tool = registeredTool(server, "list_agents");
+    const defaults = agentsOf(await invokeToolWithParsedInput(tool, {}));
+    expect(defaults.map((agent) => agent.id).sort()).toEqual(["finished-root", "root"]);
+    expect(agentsOf(await invokeToolWithParsedInput(tool, { limit: 1 })).map((a) => a.id)).toEqual([
+      "finished-root",
+    ]);
+    const all = agentsOf(await invokeToolWithParsedInput(tool, { includeSubagents: true }));
+    expect(all.map((agent) => agent.id).sort()).toEqual([
+      "child",
+      "finished-child-0",
+      "finished-child-1",
+      "finished-child-2",
+      "finished-child-3",
+      "finished-child-4",
+      "finished-child-5",
+      "finished-root",
+      "nested",
+      "old-child",
+      "root",
+    ]);
+    expect(
+      agentsOf(await invokeToolWithParsedInput(tool, { includeSubagents: true, limit: 1 })).map(
+        (a) => a.id,
+      ),
+    ).toEqual(["nested"]);
+    const status = await registeredTool(server, "get_agent_status").handler({ agentId: "nested" });
+    expect(status.structuredContent.snapshot).toMatchObject({ id: "nested" });
+  });
+
+  it("includes nested pending permissions only when requested", async () => {
+    const server = await fixture();
+    const tool = registeredTool(server, "list_pending_permissions");
+    expect((await invokeToolWithParsedInput(tool, {})).structuredContent.permissions).toEqual([]);
+    expect(
+      (await invokeToolWithParsedInput(tool, { includeSubagents: true })).structuredContent
+        .permissions,
+    ).toEqual([
+      {
+        agentId: "nested",
+        status: "idle",
+        request: {
+          id: "permission-nested",
+          provider: "claude",
+          name: "shell",
+          kind: "tool",
+          title: "Run command",
+          input: { command: "npm test" },
+        },
+      },
+    ]);
+  });
+
+  it("filters briefing sections, running counts, overflow and older unread before section limits", async () => {
+    const server = await fixture();
+    const tool = registeredTool(server, "whats_waiting");
+    const brief = async (args: Record<string, unknown>) =>
+      JSON.parse(expectSingleTextContent(await invokeToolWithParsedInput(tool, args)));
+    expect(await brief({})).toEqual({
+      summary: "1 agent finished with unread output. 1 agent running.",
+      permissions: [],
+      errors: [],
+      running: 1,
+      finished: [
+        {
+          agentId: "finished-root",
+          agent: "Stored agent",
+          project: "stored-project",
+          ago: "1m ago",
+          gist: null,
+        },
+      ],
+    });
+    const all = await brief({ includeSubagents: true });
+    expect(all.summary).toBe(
+      "1 permission request waiting, 7 agents finished with unread output. 2 agents running.",
+    );
+    expect(all.running).toBe(2);
+    expect(all.permissions.map((p: { agentId: string }) => p.agentId)).toEqual(["nested"]);
+    expect(all.finished.map((a: { agentId: string }) => a.agentId)).toEqual([
+      "finished-child-0",
+      "finished-child-1",
+      "finished-child-2",
+      "finished-child-3",
+      "finished-child-4",
+    ]);
+    expect(all.notListed).toEqual({ finished: 2, olderUnread: 1 });
   });
 });
 
