@@ -2,6 +2,8 @@ import { basename } from "node:path";
 import { z } from "zod";
 import type { Logger } from "pino";
 
+import { isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
+
 import type { AgentSnapshotPayload } from "../../messages.js";
 import type { AgentManager } from "../agent-manager.js";
 import type { AgentStorage } from "../agent-storage.js";
@@ -527,8 +529,10 @@ export function registerVoiceAssistantTools(options: RegisterVoiceAssistantTools
   }
 
   // Same population as list_agents: loaded agents plus stored ones, without
-  // internal or archived agents.
-  async function collectAgentViews(): Promise<VoiceAgentView[]> {
+  // internal or archived agents. Sub-agents are in it only on request.
+  async function collectAgentViews(input: {
+    includeSubagents: boolean;
+  }): Promise<VoiceAgentView[]> {
     const liveSnapshots = agentManager.listAgents();
     const livePayloads = await Promise.all(
       liveSnapshots.map((snapshot) =>
@@ -546,7 +550,10 @@ export function registerVoiceAssistantTools(options: RegisterVoiceAssistantTools
       .filter((record) => isStoredAgentProviderAvailable(record, registeredProviderIds))
       .map((record) => buildStoredAgentPayload(record, registeredProviderIds));
     const payloads = [...livePayloads, ...storedPayloads].filter(
-      (payload) => !payload.archivedAt && !internalIds.has(payload.id),
+      (payload) =>
+        !payload.archivedAt &&
+        !internalIds.has(payload.id) &&
+        (input.includeSubagents || !isDelegatedAgent(payload)),
     );
     return Promise.all(payloads.map(toView));
   }
@@ -556,7 +563,7 @@ export function registerVoiceAssistantTools(options: RegisterVoiceAssistantTools
     {
       title: "What's waiting for me",
       description: [
-        "One-call briefing of everything that needs the user across all Paseo agents, ordered by urgency:",
+        "One-call briefing of everything that needs the user across top-level Paseo agents, ordered by urgency:",
         "pending permission requests (with agentId and requestId to answer them via respond_to_permission),",
         "errored agents, agents that finished with unread output (with a one or two sentence gist of their final message),",
         "and how many agents are running.",
@@ -564,6 +571,8 @@ export function registerVoiceAssistantTools(options: RegisterVoiceAssistantTools
         "instead of combining list_agents, list_pending_permissions, get_agent_status and get_agent_activity.",
         "The response is short and written to be read aloud. A null gist means the agent is asleep;",
         "call get_agent_activity only if the user asks for more detail on one agent.",
+        "Sub-agents (agents created by another agent; they carry the paseo.parent-agent-id label) are left out of every list and count,",
+        "the running count and summary included, unless includeSubagents is true.",
       ].join(" "),
       inputSchema: {
         sinceHours: z
@@ -575,10 +584,23 @@ export function registerVoiceAssistantTools(options: RegisterVoiceAssistantTools
           .describe(
             `Only list finished or errored agents from the last N hours (default ${DEFAULT_WINDOW_HOURS}). Older ones are only counted.`,
           ),
+        includeSubagents: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            "Also brief on sub-agents (agents with the paseo.parent-agent-id label). Default false: top-level agents only, in the lists and in every count.",
+          ),
       },
     },
-    async ({ sinceHours }: { sinceHours?: number }) => {
-      const agents = await collectAgentViews();
+    async ({
+      sinceHours,
+      includeSubagents = false,
+    }: {
+      sinceHours?: number;
+      includeSubagents?: boolean;
+    }) => {
+      const agents = await collectAgentViews({ includeSubagents });
       const lastMessages = new Map<string, string | null>();
       await Promise.all(
         agents
@@ -618,7 +640,8 @@ export function registerVoiceAssistantTools(options: RegisterVoiceAssistantTools
     },
     async ({ agent: reference, message }: { agent: string; message: string }) => {
       const now = Date.now();
-      const agents = await collectAgentViews();
+      // A reference names one agent, so sub-agents stay reachable by title or id.
+      const agents = await collectAgentViews({ includeSubagents: true });
       let match = matchAgent(reference, agents);
       if (match.kind !== "unique") {
         // An exact id may name an archived agent; sending to it unarchives it, as
